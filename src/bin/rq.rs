@@ -30,7 +30,7 @@ fn main() {
                      .long("output")
                      .takes_value(true)
                      .value_name("OUTFILE")
-                     .default_value("round-queue.out")
+                     .default_value("round-queue.log")
                      .help("the file for stdout and stderr"))
                 .arg(clap::Arg::with_name("verbose")
                      .long("verbose")

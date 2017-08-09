@@ -171,6 +171,7 @@ impl Status {
         }
         println!("starting {:?}", &job.jobname);
         let f = match std::fs::OpenOptions::new()
+            .create(true)
             .append(true).open(job.directory.join(&job.output)) {
                 Ok(f) => f,
                 Err(e) => {
