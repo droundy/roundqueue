@@ -14,16 +14,17 @@ use notify::{Watcher};
 use std::path::{Path,PathBuf};
 use std::time::{SystemTime,Duration,UNIX_EPOCH};
 use std::io::{Result,Write,Read};
+use std::collections::HashSet;
 
 use std::os::unix::io::{FromRawFd,IntoRawFd};
 
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Running {
     pub started: Duration,
     pub node: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Job {
     pub home_dir: PathBuf,
     pub directory: PathBuf,
@@ -149,28 +150,31 @@ impl Status {
     /// run_next consumes the status to enforce that we must re-read
     /// the status before attempting anything else.  This is because
     /// another node may have run something or submitted something.
-    fn run_next(self, host: &str) {
+    fn run_next(self, host: &str, home_dir: &Path) {
         let waiting: Vec<_> =  self.waiting.iter().map(|j| j.home_dir.clone()).collect();
         if waiting.len() == 0 { return; }
-        let mut next_homedir = waiting[0].clone();
+        let mut next_homedir = HashSet::new();
         let mut least_running = 100000;
         for hd in waiting.into_iter() {
             let count = self.running.iter().filter(|j| &j.home_dir == &hd).count();
             if count < least_running {
-                next_homedir = hd;
+                next_homedir.insert(hd);
                 least_running = count;
             }
         }
-        if Some(next_homedir.clone()) != std::env::home_dir() {
+        if !next_homedir.contains(home_dir) {
             return;
         }
         let mut job = self.waiting[0].clone();
         let mut earliest_submitted = job.submitted;
         for j in self.waiting.into_iter() {
-            if j.home_dir == next_homedir && j.submitted < earliest_submitted {
+            if next_homedir.contains(&j.home_dir) && j.submitted < earliest_submitted {
                 earliest_submitted = j.submitted;
                 job = j;
             }
+        }
+        if &job.home_dir != home_dir {
+            return;
         }
         println!("starting {:?}", &job.jobname);
         let mut f = match std::fs::OpenOptions::new()
@@ -273,7 +277,7 @@ pub fn spawn_runner() -> Result<()> {
         }
         old_status = status.clone();
         if cpus > running && waiting > 0 {
-            status.run_next(&host);
+            status.run_next(&host, &home);
         }
         notify_rx.recv().unwrap();
     }
