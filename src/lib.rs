@@ -215,6 +215,12 @@ impl Status {
                     println!("Error running {:?}: {}", job.command, e);
                 },
                 Ok(st) => {
+                    if let Ok(mut f) = std::fs::OpenOptions::new().create(true)
+                        .append(true).open(job.directory.join(&job.output))
+                    {
+                        writeln!(f, ":::::: Job {:?} exited with status {:?}",
+                                 &job.jobname, st.code()).ok();
+                    }
                     println!("Done running {:?}: {}", job.jobname, st);
                 }
             }
