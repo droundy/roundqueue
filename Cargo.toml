@@ -1,0 +1,11 @@
+[package]
+name = "roundqueue"
+version = "0.1.0"
+authors = ["droundy <roundyd@physics.oregonstate.edu>"]
+
+[dependencies]
+
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+rand = "0.3.16"
