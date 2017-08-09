@@ -94,18 +94,47 @@ fn main() {
     }
 }
 
+fn homedir_to_username(home: &std::path::Path) -> String {
+    match home.file_name() {
+        Some(name) => name.to_string_lossy().into_owned(),
+        None => home.to_string_lossy().into_owned(),
+    }
+}
+
 fn do_q() -> Result<()> {
-    let status = roundqueue::Status::new().unwrap();
+    let mut status = roundqueue::Status::new().unwrap();
+    status.waiting.sort_by_key(|j| j.submitted);
+    status.waiting.reverse();
+    status.running.sort_by_key(|j| j.running.clone().unwrap().started);
+    status.running.reverse();
     for j in status.waiting.iter() {
-        println!("W {:?} {}", &j.home_dir, &j.jobname);
+        println!("W {:8} {:10} {:6} {:6} {:30}",
+                 homedir_to_username(&j.home_dir),
+                 "","",
+                 pretty_duration(j.wait_duration()),
+                 &j.jobname);
     }
     for j in status.running.iter() {
-        println!("R {:?} {} {}", &j.home_dir, &j.jobname,
-                 &j.running.clone().unwrap().node);
+        println!("R {:8} {:10} {:6} {:6} {:30}",
+                 homedir_to_username(&j.home_dir),
+                 &j.running.clone().unwrap().node,
+                 pretty_duration(j.running.clone().unwrap().duration()),
+                 pretty_duration(j.wait_duration()),
+                 &j.jobname,
+                 );
     }
     Ok(())
 }
 
 fn do_daemon() -> Result<()> {
     roundqueue::spawn_runner()
+}
+
+fn pretty_duration(time: std::time::Duration) -> String {
+    let secs = time.as_secs();
+    if secs < 60*60 {
+        format!("{}:{:02}", secs/60, secs%60)
+    } else {
+        format!("{}h:{:02}m", secs/60/60, (secs/60)%60)
+    }
 }

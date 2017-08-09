@@ -24,6 +24,17 @@ pub struct Running {
     pub node: String,
 }
 
+impl Running {
+    pub fn duration(&self) -> Duration {
+        let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        if let Some(t) = dur.checked_sub(self.started) {
+            t
+        } else {
+            Duration::from_secs(0)
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Job {
     pub home_dir: PathBuf,
@@ -46,6 +57,14 @@ impl Job {
             submitted: SystemTime::now().duration_since(UNIX_EPOCH).unwrap(),
             running: None,
         })
+    }
+    pub fn wait_duration(&self) -> Duration {
+        let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        if let Some(t) = dur.checked_sub(self.submitted) {
+            t
+        } else {
+            Duration::from_secs(0)
+        }
     }
     fn filename(&self) -> PathBuf {
         PathBuf::from(format!("{}.{}.job",
@@ -97,6 +116,7 @@ const RQ: &'static str = ".roundqueue";
 const RUNNING: &'static str = "RUNNING";
 const WAITING: &'static str = "WAITING";
 const COMPLETED: &'static str = "COMPLETED";
+const POLLING_TIME: u64 = 15;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Status {
@@ -204,7 +224,11 @@ impl Status {
             println!("Yikes, unable to save job? {}", e);
             std::process::exit(1);
         }
+        // let logpath = Some(home_dir.join(RQ).join(&host).with_extension("log"));
         std::thread::spawn(move || {
+            // unix_daemonize::daemonize_redirect(
+            //     logpath.clone(), logpath.clone(),
+            //     unix_daemonize::ChdirMode::ChdirRoot).unwrap();
             let mut cmd = std::process::Command::new(&job.command[0]);
             let fd = f.into_raw_fd();
             let stderr = unsafe {
@@ -241,6 +265,7 @@ impl Status {
 }
 
 pub fn spawn_runner() -> Result<()> {
+    ensure_directories()?;
     let home = std::env::home_dir().unwrap();
     let host = hostname::get_hostname().unwrap();
 
@@ -259,19 +284,30 @@ pub fn spawn_runner() -> Result<()> {
     write_pid(&home.join(RQ).join(&host))?;
     println!("==================\nRestarting runner!");
     let (notify_tx, notify_rx) = std::sync::mpsc::channel();
+    let mut old_status = Status::new()?;
     let mut watcher =
-        notify::watcher(notify_tx,
+        notify::watcher(notify_tx.clone(),
                         std::time::Duration::from_secs(1)).unwrap();
     watcher.watch(home.join(RQ).join(RUNNING),
                   notify::RecursiveMode::NonRecursive).ok();
-    watcher.watch(home.join(RQ).join(WAITING),
-                  notify::RecursiveMode::NonRecursive).ok();
-    let mut old_status = Status::new().unwrap();
+    for userdir in std::fs::read_dir("/home")? {
+        if let Ok(userdir) = userdir {
+            //println!("watching: {:?}", userdir.path().join(RQ).join(RUNNING));
+            watcher.watch(userdir.path().join(RQ).join(RUNNING),
+                          notify::RecursiveMode::NonRecursive).ok();
+        }
+    }
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(POLLING_TIME));
+            notify_tx.send(notify::DebouncedEvent::Rescan).unwrap();
+        }
+    });
     loop {
         let status = Status::new().unwrap();
         let running = status.running.iter().filter(|j| j.is_running_on(&host)).count();
         let waiting = status.waiting.iter().count();
-        if old_status != status {
+        if old_status != status || true {
             println!("Currently using {}/{} cores, with {} jobs waiting.",
                      running, cpus, waiting);
         }
@@ -297,4 +333,11 @@ fn write_pid(fname: &Path) -> Result<()> {
     let pid = unsafe { libc::getpid() };
     let mut f = std::fs::File::create(fname)?;
     f.write_all(&serde_json::to_string(&pid).unwrap().as_bytes())
+}
+
+fn ensure_directories() -> Result<()> {
+    let home = std::env::home_dir().unwrap();
+    std::fs::create_dir_all(&home.join(RQ).join(WAITING))?;
+    std::fs::create_dir_all(&home.join(RQ).join(RUNNING))?;
+    std::fs::create_dir_all(&home.join(RQ).join(COMPLETED))
 }
