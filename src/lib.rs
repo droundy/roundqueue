@@ -253,8 +253,8 @@ pub fn spawn_runner() -> Result<()> {
     println!("I am spawning a runner for {} with {} cpus in {:?}!",
              &host, cpus, &home);
     unix_daemonize::daemonize_redirect(
-        Some(home.join(RQ).join("log")),
-        Some(home.join(RQ).join("log")),
+        Some(home.join(RQ).join(&host).with_extension("log")),
+        Some(home.join(RQ).join(&host).with_extension("log")),
         unix_daemonize::ChdirMode::ChdirRoot).unwrap();
     write_pid(&home.join(RQ).join(&host))?;
     println!("==================\nRestarting runner!");
