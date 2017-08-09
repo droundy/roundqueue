@@ -116,7 +116,7 @@ const RQ: &'static str = ".roundqueue";
 const RUNNING: &'static str = "RUNNING";
 const WAITING: &'static str = "WAITING";
 const COMPLETED: &'static str = "COMPLETED";
-const POLLING_TIME: u64 = 15;
+const POLLING_TIME: u64 = 60;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Status {
