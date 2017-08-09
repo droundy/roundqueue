@@ -161,6 +161,9 @@ impl Status {
                 least_running = count;
             }
         }
+        if Some(next_homedir.clone()) != std::env::home_dir() {
+            return;
+        }
         let mut job = self.waiting[0].clone();
         let mut earliest_submitted = job.submitted;
         for j in self.waiting.into_iter() {
