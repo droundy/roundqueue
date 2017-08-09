@@ -7,6 +7,7 @@ extern crate serde_json;
 use std::path::{Path,PathBuf};
 use std::time::{SystemTime,Duration,UNIX_EPOCH};
 use std::io::{Result,Write,Read};
+use std::ffi::OsString;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Running {
@@ -18,14 +19,14 @@ pub struct Running {
 pub struct Job {
     pub home_dir: PathBuf,
     pub directory: PathBuf,
-    pub command: String,
+    pub command: Vec<OsString>,
     pub jobname: String,
     pub submitted: Duration,
     pub running: Option<Running>,
 }
 
 impl Job {
-    fn new(cmd: String, jobname: String) -> Result<Job> {
+    fn new(cmd: Vec<OsString>, jobname: String) -> Result<Job> {
         Ok(Job {
             directory: std::env::current_dir()?,
             home_dir: std::env::home_dir().unwrap(),
@@ -61,9 +62,9 @@ const WAITING: &'static str = "WAITING";
 const COMPLETED: &'static str = "COMPLETED";
 
 pub struct Status {
-    waiting: Vec<Job>,
-    running: Vec<Job>,
-    completed: Vec<Job>,
+    pub waiting: Vec<Job>,
+    pub running: Vec<Job>,
+    pub completed: Vec<Job>,
 }
 
 impl Status {

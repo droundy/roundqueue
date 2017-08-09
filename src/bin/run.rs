@@ -1,11 +1,39 @@
 extern crate roundqueue;
 
+#[macro_use]
+extern crate clap;
+
 fn main() {
-    let status = roundqueue::Status::new().unwrap();
-    for j in status.waiting.iter() {
-        println!("W {} {}", &j.home_dir, &j.command);
+    let m = clap::App::new("run")
+        .about("run a command")
+        .arg(clap::Arg::with_name("jobs")
+             .short("j")
+             .long("jobs")
+             .takes_value(true)
+             .value_name("JOBS")
+             .default_value("0")
+             .hide_default_value(true)
+             .help("the number of jobs to run simultaneously"))
+        .arg(clap::Arg::with_name("clean")
+             .short("c")
+             .long("clean")
+             .help("remove all traces of built files"))
+        .arg(clap::Arg::with_name("dry")
+             .long("dry")
+             .help("dry run (don't do any building!)"))
+        .arg(clap::Arg::with_name("verbose")
+             .long("verbose")
+             .short("v")
+             .multiple(true)
+             .help("show verbose output"))
+        .arg(clap::Arg::with_name("command")
+             .index(1)
+             .multiple(true)
+             .help("command line"))
+        .get_matches();
+    let mut command = Vec::new();
+    if let Some(c) = m.values_of_os("command") {
+        command.extend(c);
     }
-    for j in status.running.iter() {
-        println!("R {} {}", &j.home_dir, &j.command);
-    }
+    println!("Command: {:?}", &command);
 }
