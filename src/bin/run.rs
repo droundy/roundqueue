@@ -1,7 +1,7 @@
 extern crate roundqueue;
-
-#[macro_use]
 extern crate clap;
+
+use std::ffi::OsString;
 
 fn main() {
     let m = clap::App::new("run")
@@ -33,7 +33,10 @@ fn main() {
         .get_matches();
     let mut command = Vec::new();
     if let Some(c) = m.values_of_os("command") {
-        command.extend(c);
+        for x in c {
+            command.push(OsString::from(x));
+        }
     }
     println!("Command: {:?}", &command);
+    roundqueue::Job::new(command, String::from("testing")).ok();
 }

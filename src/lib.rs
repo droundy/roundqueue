@@ -26,7 +26,7 @@ pub struct Job {
 }
 
 impl Job {
-    fn new(cmd: Vec<OsString>, jobname: String) -> Result<Job> {
+    pub fn new(cmd: Vec<OsString>, jobname: String) -> Result<Job> {
         Ok(Job {
             directory: std::env::current_dir()?,
             home_dir: std::env::home_dir().unwrap(),
