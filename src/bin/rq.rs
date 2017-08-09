@@ -100,7 +100,8 @@ fn do_q() -> Result<()> {
         println!("W {:?} {}", &j.home_dir, &j.jobname);
     }
     for j in status.running.iter() {
-        println!("R {:?} {}", &j.home_dir, &j.jobname);
+        println!("R {:?} {} {}", &j.home_dir, &j.jobname,
+                 &j.running.clone().unwrap().node);
     }
     Ok(())
 }
