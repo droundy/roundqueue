@@ -170,7 +170,7 @@ impl Status {
             }
         }
         println!("starting {:?}", &job.jobname);
-        let f = match std::fs::OpenOptions::new()
+        let mut f = match std::fs::OpenOptions::new()
             .create(true)
             .append(true).open(job.directory.join(&job.output)) {
                 Ok(f) => f,
@@ -180,6 +180,11 @@ impl Status {
                     return;
                 },
             };
+        if let Err(e) = writeln!(f, "::::: Starting job {:?} on {}", &job.jobname, &host) {
+            println!("Error writing to output {:?}: {}",
+                     job.directory.join(&job.output), e);
+            return;
+        }
         if let Err(e) = job.change_status(Path::new(WAITING), Path::new(RUNNING)) {
             println!("Unable to change status of job {} ({})", &job.jobname, e);
             return;
