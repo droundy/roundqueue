@@ -23,6 +23,7 @@ pub struct RunningJob {
     pub job: Job,
     pub started: Duration,
     pub node: String,
+    pub pid: u32,
 }
 
 impl RunningJob {
@@ -35,10 +36,6 @@ impl RunningJob {
         }
     }
     fn completed(&self) -> Result<()> {
-        std::fs::rename(self.job.filepath(Path::new(RUNNING)),
-                        self.job.filepath(Path::new(COMPLETED)))
-    }
-    fn failed(&self) -> Result<()> {
         std::fs::rename(self.job.filepath(Path::new(RUNNING)),
                         self.job.filepath(Path::new(COMPLETED)))
     }
@@ -142,7 +139,7 @@ const POLLING_TIME: u64 = 60;
 pub struct Status {
     pub waiting: Vec<Job>,
     pub running: Vec<RunningJob>,
-    pub completed: Vec<RunningJob>,
+    //pub completed: Vec<RunningJob>,
 }
 
 impl Status {
@@ -150,7 +147,7 @@ impl Status {
         let mut status = Status {
             waiting: Vec::new(),
             running: Vec::new(),
-            completed: Vec::new(),
+            // completed: Vec::new(),
         };
         for userdir in std::fs::read_dir("/home")? {
             if let Ok(userdir) = userdir {
@@ -174,15 +171,15 @@ impl Status {
                         }
                     }
                 }
-                if let Ok(rr) = rqdir.join(COMPLETED).read_dir() {
-                    for run in rr.flat_map(|r| r.ok()) {
-                        if let Ok(j) = RunningJob::read(&run.path()) {
-                            status.completed.push(j);
-                        } else {
-                            eprintln!("Error reading {:?}", run.path());
-                        }
-                    }
-                }
+                // if let Ok(rr) = rqdir.join(COMPLETED).read_dir() {
+                //     for run in rr.flat_map(|r| r.ok()) {
+                //         if let Ok(j) = RunningJob::read(&run.path()) {
+                //             status.completed.push(j);
+                //         } else {
+                //             eprintln!("Error reading {:?}", run.path());
+                //         }
+                //     }
+                // }
             }
         }
         Ok(status)
@@ -236,17 +233,9 @@ impl Status {
             println!("Unable to change status of job {} ({})", &job.jobname, e);
             return;
         }
-        let runningjob = RunningJob {
-            started: now(),
-            node: String::from(host),
-            job: job,
-        };
-        if let Err(e) = runningjob.save(Path::new(RUNNING)) {
-            println!("Yikes, unable to save job? {}", e);
-            std::process::exit(1);
-        }
-        // let logpath = Some(home_dir.join(RQ).join(&host).with_extension("log"));
-        let mut cmd = std::process::Command::new(&runningjob.job.command[0]);
+
+        // First spawn the child...
+        let mut cmd = std::process::Command::new(&job.command[0]);
         let fd = f.into_raw_fd();
         let stderr = unsafe {
             std::process::Stdio::from_raw_fd(fd)
@@ -254,7 +243,7 @@ impl Status {
         let stdout = unsafe {
             std::process::Stdio::from_raw_fd(fd)
         };
-        cmd.args(&runningjob.job.command[1..]).current_dir(&runningjob.job.directory)
+        cmd.args(&job.command[1..]).current_dir(&job.directory)
             .stderr(stderr)
             .stdout(stdout)
             .stdin(std::process::Stdio::null());
@@ -262,10 +251,22 @@ impl Status {
             Ok(c) => c,
             Err(e) => {
                 println!("Unable to spawn child: {}", e);
-                runningjob.failed().ok();
+                // runningjob.failed().ok();
                 return;
             },
         };
+
+        let runningjob = RunningJob {
+            started: now(),
+            node: String::from(host),
+            job: job,
+            pid: child.id(),
+        };
+        if let Err(e) = runningjob.save(Path::new(RUNNING)) {
+            println!("Yikes, unable to save job? {}", e);
+            std::process::exit(1);
+        }
+        // let logpath = Some(home_dir.join(RQ).join(&host).with_extension("log"));
         std::thread::spawn(move || {
             match child.wait() {
                 Err(e) => {
