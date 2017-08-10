@@ -155,6 +155,7 @@ const POLLING_TIME: u64 = 60;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Status {
+    pub homedirs_sharing_host: Vec<PathBuf>,
     pub waiting: Vec<Job>,
     pub running: Vec<RunningJob>,
     //pub completed: Vec<RunningJob>,
@@ -163,13 +164,29 @@ pub struct Status {
 impl Status {
     pub fn new() -> Result<Status> {
         let mut status = Status {
+            homedirs_sharing_host: Vec::new(),
             waiting: Vec::new(),
             running: Vec::new(),
             // completed: Vec::new(),
         };
+        let root_home = PathBuf::from("/home");
+        let host = hostname::get_hostname().unwrap();
+        // Look for all the jobs!
         for userdir in std::fs::read_dir("/home")? {
             if let Ok(userdir) = userdir {
                 let rqdir = userdir.path().join(RQ);
+                // First check whether this user is running a
+                // roundqueue daemon on the same host we are using.
+                if let Ok(pid) = read_pid(&rqdir.join(&host)) {
+                    if pid_exists(pid) {
+                        status.homedirs_sharing_host.push(root_home.join(userdir.path()));
+                        // println!("found homedir {:?}", root_home.join(userdir.path()));
+                    } else {
+                        // println!("no daemon: {:?}", root_home.join(userdir.path()));
+                    }
+                } else {
+                    // println!("no lockfile: {:?}", root_home.join(userdir.path()));
+                }
                 // eprintln!("{:?}", rqdir);
                 if let Ok(rr) = rqdir.join(RUNNING).read_dir() {
                     for run in rr.flat_map(|r| r.ok()) {
@@ -401,4 +418,10 @@ fn ensure_directories() -> Result<()> {
 
 fn now() -> Duration {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
+}
+
+/// Determine if a process exists with this pid.  The kill system call
+/// when given a zero signal just checks if the process exists.
+fn pid_exists(pid: i32) -> bool {
+    unsafe { libc::kill(pid, 0) == 0 }
 }
