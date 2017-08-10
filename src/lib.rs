@@ -288,7 +288,7 @@ pub fn spawn_runner() -> Result<()> {
     let mut watcher =
         notify::watcher(notify_tx.clone(),
                         std::time::Duration::from_secs(1)).unwrap();
-    watcher.watch(home.join(RQ).join(RUNNING),
+    watcher.watch(home.join(RQ).join(WAITING),
                   notify::RecursiveMode::NonRecursive).ok();
     for userdir in std::fs::read_dir("/home")? {
         if let Ok(userdir) = userdir {
