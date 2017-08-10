@@ -43,6 +43,16 @@ fn main() {
                      .help("command line"))
         )
         .subcommand(
+            clap::SubCommand::with_name("cancel")
+                .about("cancel a job")
+                .arg(clap::Arg::with_name("jobname")
+                     .short("J")
+                     .long("job-name")
+                     .takes_value(true)
+                     .value_name("NAME")
+                     .help("the name of the job to cancel"))
+        )
+        .subcommand(
             clap::SubCommand::with_name("q")
                 .about("show the queue")
                 .arg(clap::Arg::with_name("verbose")
@@ -62,11 +72,28 @@ fn main() {
         )
         .get_matches();
     match m.subcommand() {
-        ("q", _) => {
-            do_q().unwrap();
-        },
         ("daemon", Some(_)) => {
             do_daemon().unwrap();
+        },
+        ("cancel", Some(m)) => {
+            let status = roundqueue::Status::new().unwrap();
+            if let Some(jn) = m.value_of("jobname") {
+                for j in status.running.iter()
+                    .filter(|j| j.job.jobname == jn)
+                {
+                    println!("job: {:?}", j);
+                }
+                for j in status.waiting.iter()
+                    .filter(|j| j.jobname == jn)
+                {
+                    println!("job: {:?}", j);
+                }
+            } else {
+                println!("hello world");
+            }
+        },
+        ("q", _) => {
+            do_q().unwrap();
         },
         (_, None) => {
             do_q().unwrap();

@@ -24,6 +24,7 @@ pub struct RunningJob {
     pub started: Duration,
     pub node: String,
     pub pid: u32,
+    pub canceled: bool,
 }
 
 impl RunningJob {
@@ -57,6 +58,12 @@ impl RunningJob {
     fn save(&self, subdir: &Path) -> Result<()> {
         let mut f = std::fs::File::create(self.job.filepath(subdir))?;
         f.write_all(&serde_json::to_string(self).unwrap().as_bytes())
+    }
+    pub fn kill(&self) {
+        unsafe { libc::kill(self.pid as i32, libc::SIGTERM); }
+        std::thread::sleep(Duration::from_secs(2));
+        unsafe { libc::kill(self.pid as i32, libc::SIGKILL); }
+        self.completed().ok();
     }
 }
 
@@ -261,6 +268,7 @@ impl Status {
             node: String::from(host),
             job: job,
             pid: child.id(),
+            canceled: false,
         };
         if let Err(e) = runningjob.save(Path::new(RUNNING)) {
             println!("Yikes, unable to save job? {}", e);
