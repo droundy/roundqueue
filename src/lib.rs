@@ -24,7 +24,6 @@ pub struct RunningJob {
     pub started: Duration,
     pub node: String,
     pub pid: u32,
-    pub canceled: bool,
 }
 
 impl RunningJob {
@@ -39,6 +38,14 @@ impl RunningJob {
     fn completed(&self) -> Result<()> {
         std::fs::rename(self.job.filepath(Path::new(RUNNING)),
                         self.job.filepath(Path::new(COMPLETED)))
+    }
+    pub fn cancel(&self) -> Result<()> {
+        std::fs::rename(self.job.filepath(Path::new(RUNNING)),
+                        self.job.filepath(Path::new(CANCELING)))
+    }
+    fn canceled(&self) -> Result<()> {
+        std::fs::rename(self.job.filepath(Path::new(CANCELING)),
+                        self.job.filepath(Path::new(CANCELED)))
     }
     fn read(fname: &Path) -> Result<RunningJob> {
         let mut f = std::fs::File::open(fname)?;
@@ -88,6 +95,10 @@ impl Job {
             submitted: now(),
         })
     }
+    pub fn cancel(&self) -> Result<()> {
+        std::fs::rename(self.filepath(Path::new(WAITING)),
+                        self.filepath(Path::new(CANCELED)))
+    }
     pub fn wait_duration(&self) -> Duration {
         let dur = now();
         if let Some(t) = dur.checked_sub(self.submitted) {
@@ -130,16 +141,16 @@ impl Job {
         self.save(Path::new(WAITING))
     }
     fn ensure_directories(&self) -> Result<()> {
-        std::fs::create_dir_all(&self.home_dir.join(RQ).join(WAITING))?;
-        std::fs::create_dir_all(&self.home_dir.join(RQ).join(RUNNING))?;
-        std::fs::create_dir_all(&self.home_dir.join(RQ).join(COMPLETED))
+        ensure_directories()
     }
 }
 
 const RQ: &'static str = ".roundqueue";
-const RUNNING: &'static str = "RUNNING";
-const WAITING: &'static str = "WAITING";
-const COMPLETED: &'static str = "COMPLETED";
+const RUNNING: &'static str = "running";
+const WAITING: &'static str = "waiting";
+const COMPLETED: &'static str = "completed";
+const CANCELED: &'static str = "canceled";
+const CANCELING: &'static str = "cancel";
 const POLLING_TIME: u64 = 60;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -268,7 +279,6 @@ impl Status {
             node: String::from(host),
             job: job,
             pid: child.id(),
-            canceled: false,
         };
         if let Err(e) = runningjob.save(Path::new(RUNNING)) {
             println!("Yikes, unable to save job? {}", e);
@@ -339,6 +349,16 @@ pub fn spawn_runner() -> Result<()> {
         }
     });
     loop {
+        if let Ok(rr) = home.join(RQ).join(CANCELING).read_dir() {
+            for run in rr.flat_map(|r| r.ok()) {
+                if let Ok(j) = RunningJob::read(&run.path()) {
+                    j.kill();
+                    j.canceled().ok();
+                } else {
+                    eprintln!("Error reading scancel {:?}", run.path());
+                }
+            }
+        }
         let status = Status::new().unwrap();
         let running = status.running.iter().filter(|j| &j.node == &host).count();
         let waiting = status.waiting.iter().count();
@@ -374,7 +394,9 @@ fn ensure_directories() -> Result<()> {
     let home = std::env::home_dir().unwrap();
     std::fs::create_dir_all(&home.join(RQ).join(WAITING))?;
     std::fs::create_dir_all(&home.join(RQ).join(RUNNING))?;
-    std::fs::create_dir_all(&home.join(RQ).join(COMPLETED))
+    std::fs::create_dir_all(&home.join(RQ).join(COMPLETED))?;
+    std::fs::create_dir_all(&home.join(RQ).join(CANCELED))?;
+    std::fs::create_dir_all(&home.join(RQ).join(CANCELING))
 }
 
 fn now() -> Duration {

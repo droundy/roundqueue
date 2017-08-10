@@ -78,15 +78,34 @@ fn main() {
         ("cancel", Some(m)) => {
             let status = roundqueue::Status::new().unwrap();
             if let Some(jn) = m.value_of("jobname") {
-                for j in status.running.iter()
-                    .filter(|j| j.job.jobname == jn)
-                {
-                    println!("job: {:?}", j);
-                }
-                for j in status.waiting.iter()
-                    .filter(|j| j.jobname == jn)
-                {
-                    println!("job: {:?}", j);
+                let mut retry = true;
+                while retry {
+                    retry = false;
+                    for j in status.waiting.iter()
+                        .filter(|j| j.jobname == jn) {
+                        println!("W {:8} {:10} {:6} {:6} {:30}",
+                                 homedir_to_username(&j.home_dir),
+                                 "","",
+                                 pretty_duration(j.wait_duration()),
+                                 &j.jobname);
+                        if j.cancel().is_err() {
+                            println!("difficulty canceling {} ... did it just start?", &j.jobname);
+                        }
+                    }
+                    for j in status.running.iter()
+                        .filter(|j| j.job.jobname == jn)
+                    {
+                        println!("R {:8} {:10} {:6} {:6} {:30}",
+                                 homedir_to_username(&j.job.home_dir),
+                                 &j.node,
+                                 pretty_duration(j.duration()),
+                                 pretty_duration(j.job.wait_duration()),
+                                 &j.job.jobname,
+                        );
+                        if j.cancel().is_err() {
+                            println!("error canceling {}.?", &j.job.jobname);
+                        }
+                    }
                 }
             } else {
                 println!("hello world");
@@ -148,7 +167,7 @@ fn do_q() -> Result<()> {
                  pretty_duration(j.duration()),
                  pretty_duration(j.job.wait_duration()),
                  &j.job.jobname,
-                 );
+        );
     }
     Ok(())
 }
