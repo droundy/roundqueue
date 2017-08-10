@@ -223,7 +223,13 @@ impl Status {
     /// the status before attempting anything else.  This is because
     /// another node may have run something or submitted something.
     fn run_next(self, host: &str, home_dir: &Path) {
-        let waiting: Vec<_> =  self.waiting.iter().map(|j| j.home_dir.clone()).collect();
+        // "waiting" is the set of jobs that are waiting to run *on
+        // this host*.  Thus this ignores any waiting jobs that cannot
+        // run on this host because their user does not have a daemon
+        // running on this host.
+        let waiting: Vec<_> =  self.waiting.iter()
+            .filter(|j| self.homedirs_sharing_host.contains(&j.home_dir))
+            .map(|j| j.home_dir.clone()).collect();
         if waiting.len() == 0 { return; }
         let mut next_homedir = HashSet::new();
         let mut least_running = 100000;
@@ -350,8 +356,15 @@ pub fn spawn_runner() -> Result<()> {
     let mut watcher =
         notify::watcher(notify_tx.clone(),
                         std::time::Duration::from_secs(1)).unwrap();
+    // We watch our own user's WAITING directory, since this is the
+    // only place new jobs can show up that we might want to run.
     watcher.watch(home.join(RQ).join(WAITING),
                   notify::RecursiveMode::NonRecursive).ok();
+    // We watch all user RUNNING directories, since in the future they
+    // may be running a job on this host, and when that job completes
+    // we may want to run a job of our own.  Even if they don't
+    // currently have a daemon running (and thus no jobs), they may
+    // start a daemon in the future, while we are still running!
     for userdir in std::fs::read_dir("/home")? {
         if let Ok(userdir) = userdir {
             watcher.watch(userdir.path().join(RQ).join(RUNNING),
