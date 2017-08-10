@@ -404,20 +404,41 @@ pub fn spawn_runner() -> Result<()> {
     }
 }
 
-fn read_pid(fname: &Path) -> Result<libc::pid_t> {
-    let mut f = std::fs::File::open(fname)?;
-    let mut data = Vec::new();
-    f.read_to_end(&mut data)?;
-    match serde_json::from_slice::<libc::pid_t>(&data) {
-        Ok(pid) => Ok(pid),
-        Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+struct DaemonInfo {
+    pid: libc::pid_t,
+    physical_cores: usize,
+    logical_cpus: usize,
+    restart_time: Duration,
+}
+
+impl DaemonInfo {
+    fn new() -> DaemonInfo {
+        DaemonInfo {
+            pid: unsafe { libc::getpid() },
+            physical_cores: num_cpus::get_physical(),
+            logical_cpus: num_cpus::get(),
+            restart_time: now(),
+        }
+    }
+    fn read(fname: &Path) -> Result<DaemonInfo> {
+        let mut f = std::fs::File::open(fname)?;
+        let mut data = Vec::new();
+        f.read_to_end(&mut data)?;
+        match serde_json::from_slice::<DaemonInfo>(&data) {
+            Ok(dinfo) => Ok(dinfo),
+            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        }
     }
 }
 
+fn read_pid(fname: &Path) -> Result<libc::pid_t> {
+    Ok(DaemonInfo::read(fname)?.pid)
+}
+
 fn write_pid(fname: &Path) -> Result<()> {
-    let pid = unsafe { libc::getpid() };
     let mut f = std::fs::File::create(fname)?;
-    f.write_all(&serde_json::to_string(&pid).unwrap().as_bytes())
+    f.write_all(&serde_json::to_string(&DaemonInfo::new()).unwrap().as_bytes())
 }
 
 fn ensure_directories() -> Result<()> {
@@ -435,6 +456,6 @@ fn now() -> Duration {
 
 /// Determine if a process exists with this pid.  The kill system call
 /// when given a zero signal just checks if the process exists.
-fn pid_exists(pid: i32) -> bool {
+fn pid_exists(pid: libc::pid_t) -> bool {
     unsafe { libc::kill(pid, 0) == 0 }
 }
