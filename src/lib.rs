@@ -19,19 +19,39 @@ use std::collections::HashSet;
 use std::os::unix::io::{FromRawFd,IntoRawFd};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct Running {
+pub struct RunningJob {
+    pub job: Job,
     pub started: Duration,
     pub node: String,
 }
 
-impl Running {
+impl RunningJob {
     pub fn duration(&self) -> Duration {
-        let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let dur = now();
         if let Some(t) = dur.checked_sub(self.started) {
             t
         } else {
             Duration::from_secs(0)
         }
+    }
+    fn read(fname: &Path) -> Result<RunningJob> {
+        let mut f = std::fs::File::open(fname)?;
+        let mut data = Vec::new();
+        f.read_to_end(&mut data)?;
+        match serde_json::from_slice::<RunningJob>(&data) {
+            Ok(job) => {
+                if job.job.command.len() == 0 {
+                    Err(std::io::Error::new(std::io::ErrorKind::Other, "empty cmd?"))
+                } else {
+                    Ok(job)
+                }
+            },
+            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        }
+    }
+    fn save(&self, subdir: &Path) -> Result<()> {
+        let mut f = std::fs::File::create(self.job.filepath(subdir))?;
+        f.write_all(&serde_json::to_string(self).unwrap().as_bytes())
     }
 }
 
@@ -43,7 +63,6 @@ pub struct Job {
     pub jobname: String,
     pub output: PathBuf,
     pub submitted: Duration,
-    pub running: Option<Running>,
 }
 
 impl Job {
@@ -54,12 +73,11 @@ impl Job {
             command: cmd,
             jobname: jobname,
             output: output,
-            submitted: SystemTime::now().duration_since(UNIX_EPOCH).unwrap(),
-            running: None,
+            submitted: now(),
         })
     }
     pub fn wait_duration(&self) -> Duration {
-        let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let dur = now();
         if let Some(t) = dur.checked_sub(self.submitted) {
             t
         } else {
@@ -72,12 +90,6 @@ impl Job {
     }
     fn filepath(&self, subdir: &Path) -> PathBuf {
         self.home_dir.join(RQ).join(subdir).join(self.filename())
-    }
-    fn is_running_on(&self, host: &str) -> bool {
-        if let Some(ref r) = self.running {
-            return r.node == host
-        }
-        false
     }
     fn read(fname: &Path) -> Result<Job> {
         let mut f = std::fs::File::open(fname)?;
@@ -121,8 +133,8 @@ const POLLING_TIME: u64 = 60;
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Status {
     pub waiting: Vec<Job>,
-    pub running: Vec<Job>,
-    pub completed: Vec<Job>,
+    pub running: Vec<RunningJob>,
+    pub completed: Vec<RunningJob>,
 }
 
 impl Status {
@@ -138,7 +150,7 @@ impl Status {
                 // eprintln!("{:?}", rqdir);
                 if let Ok(rr) = rqdir.join(RUNNING).read_dir() {
                     for run in rr.flat_map(|r| r.ok()) {
-                        if let Ok(j) = Job::read(&run.path()) {
+                        if let Ok(j) = RunningJob::read(&run.path()) {
                             status.running.push(j);
                         } else {
                             eprintln!("Error reading {:?}", run.path());
@@ -156,7 +168,7 @@ impl Status {
                 }
                 if let Ok(rr) = rqdir.join(COMPLETED).read_dir() {
                     for run in rr.flat_map(|r| r.ok()) {
-                        if let Ok(j) = Job::read(&run.path()) {
+                        if let Ok(j) = RunningJob::read(&run.path()) {
                             status.completed.push(j);
                         } else {
                             eprintln!("Error reading {:?}", run.path());
@@ -176,7 +188,7 @@ impl Status {
         let mut next_homedir = HashSet::new();
         let mut least_running = 100000;
         for hd in waiting.into_iter() {
-            let count = self.running.iter().filter(|j| &j.home_dir == &hd).count();
+            let count = self.running.iter().filter(|j| &j.job.home_dir == &hd).count();
             if count < least_running {
                 next_homedir.insert(hd);
                 least_running = count;
@@ -216,11 +228,12 @@ impl Status {
             println!("Unable to change status of job {} ({})", &job.jobname, e);
             return;
         }
-        job.running = Some(Running {
-            started: SystemTime::now().duration_since(UNIX_EPOCH).unwrap(),
+        let runningjob = RunningJob {
+            started: now(),
             node: String::from(host),
-        });
-        if let Err(e) = job.save(Path::new(RUNNING)) {
+            job: job,
+        };
+        if let Err(e) = runningjob.save(Path::new(RUNNING)) {
             println!("Yikes, unable to save job? {}", e);
             std::process::exit(1);
         }
@@ -229,7 +242,7 @@ impl Status {
             // unix_daemonize::daemonize_redirect(
             //     logpath.clone(), logpath.clone(),
             //     unix_daemonize::ChdirMode::ChdirRoot).unwrap();
-            let mut cmd = std::process::Command::new(&job.command[0]);
+            let mut cmd = std::process::Command::new(&runningjob.job.command[0]);
             let fd = f.into_raw_fd();
             let stderr = unsafe {
                 std::process::Stdio::from_raw_fd(fd)
@@ -237,27 +250,27 @@ impl Status {
             let stdout = unsafe {
                 std::process::Stdio::from_raw_fd(fd)
             };
-            cmd.args(&job.command[1..]).current_dir(&job.directory)
+            cmd.args(&runningjob.job.command[1..]).current_dir(&runningjob.job.directory)
                 .stderr(stderr)
                 .stdout(stdout)
                 .stdin(std::process::Stdio::null());
             match cmd.status() {
                 Err(e) => {
-                    println!("Error running {:?}: {}", job.command, e);
+                    println!("Error running {:?}: {}", runningjob.job.command, e);
                 },
                 Ok(st) => {
                     if let Ok(mut f) = std::fs::OpenOptions::new().create(true)
-                        .append(true).open(job.directory.join(&job.output))
+                        .append(true).open(runningjob.job.directory.join(&runningjob.job.output))
                     {
                         writeln!(f, ":::::: Job {:?} exited with status {:?}",
-                                 &job.jobname, st.code()).ok();
+                                 &runningjob.job.jobname, st.code()).ok();
                     }
-                    println!("Done running {:?}: {}", job.jobname, st);
+                    println!("Done running {:?}: {}", runningjob.job.jobname, st);
                 }
             }
-            if let Err(e) = job.change_status(Path::new(RUNNING), Path::new(COMPLETED)) {
+            if let Err(e) = runningjob.job.change_status(Path::new(RUNNING), Path::new(COMPLETED)) {
                 println!("Unable to change status of completed job {} ({})",
-                         &job.jobname, e);
+                         &runningjob.job.jobname, e);
                 return;
             }
         });
@@ -292,7 +305,6 @@ pub fn spawn_runner() -> Result<()> {
                   notify::RecursiveMode::NonRecursive).ok();
     for userdir in std::fs::read_dir("/home")? {
         if let Ok(userdir) = userdir {
-            //println!("watching: {:?}", userdir.path().join(RQ).join(RUNNING));
             watcher.watch(userdir.path().join(RQ).join(RUNNING),
                           notify::RecursiveMode::NonRecursive).ok();
         }
@@ -300,14 +312,15 @@ pub fn spawn_runner() -> Result<()> {
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(std::time::Duration::from_secs(POLLING_TIME));
+            // println!("Polling...");
             notify_tx.send(notify::DebouncedEvent::Rescan).unwrap();
         }
     });
     loop {
         let status = Status::new().unwrap();
-        let running = status.running.iter().filter(|j| j.is_running_on(&host)).count();
+        let running = status.running.iter().filter(|j| &j.node == &host).count();
         let waiting = status.waiting.iter().count();
-        if old_status != status || true {
+        if old_status != status {
             println!("Currently using {}/{} cores, with {} jobs waiting.",
                      running, cpus, waiting);
         }
@@ -340,4 +353,8 @@ fn ensure_directories() -> Result<()> {
     std::fs::create_dir_all(&home.join(RQ).join(WAITING))?;
     std::fs::create_dir_all(&home.join(RQ).join(RUNNING))?;
     std::fs::create_dir_all(&home.join(RQ).join(COMPLETED))
+}
+
+fn now() -> Duration {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
 }

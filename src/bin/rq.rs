@@ -105,7 +105,7 @@ fn do_q() -> Result<()> {
     let mut status = roundqueue::Status::new().unwrap();
     status.waiting.sort_by_key(|j| j.submitted);
     status.waiting.reverse();
-    status.running.sort_by_key(|j| j.running.clone().unwrap().started);
+    status.running.sort_by_key(|j| j.started);
     status.running.reverse();
     for j in status.waiting.iter() {
         println!("W {:8} {:10} {:6} {:6} {:30}",
@@ -116,11 +116,11 @@ fn do_q() -> Result<()> {
     }
     for j in status.running.iter() {
         println!("R {:8} {:10} {:6} {:6} {:30}",
-                 homedir_to_username(&j.home_dir),
-                 &j.running.clone().unwrap().node,
-                 pretty_duration(j.running.clone().unwrap().duration()),
-                 pretty_duration(j.wait_duration()),
-                 &j.jobname,
+                 homedir_to_username(&j.job.home_dir),
+                 &j.node,
+                 pretty_duration(j.duration()),
+                 pretty_duration(j.job.wait_duration()),
+                 &j.job.jobname,
                  );
     }
     Ok(())
