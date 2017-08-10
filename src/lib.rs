@@ -34,6 +34,14 @@ impl RunningJob {
             Duration::from_secs(0)
         }
     }
+    fn completed(&self) -> Result<()> {
+        std::fs::rename(self.job.filepath(Path::new(RUNNING)),
+                        self.job.filepath(Path::new(COMPLETED)))
+    }
+    fn failed(&self) -> Result<()> {
+        std::fs::rename(self.job.filepath(Path::new(RUNNING)),
+                        self.job.filepath(Path::new(COMPLETED)))
+    }
     fn read(fname: &Path) -> Result<RunningJob> {
         let mut f = std::fs::File::open(fname)?;
         let mut data = Vec::new();
@@ -238,23 +246,28 @@ impl Status {
             std::process::exit(1);
         }
         // let logpath = Some(home_dir.join(RQ).join(&host).with_extension("log"));
+        let mut cmd = std::process::Command::new(&runningjob.job.command[0]);
+        let fd = f.into_raw_fd();
+        let stderr = unsafe {
+            std::process::Stdio::from_raw_fd(fd)
+        };
+        let stdout = unsafe {
+            std::process::Stdio::from_raw_fd(fd)
+        };
+        cmd.args(&runningjob.job.command[1..]).current_dir(&runningjob.job.directory)
+            .stderr(stderr)
+            .stdout(stdout)
+            .stdin(std::process::Stdio::null());
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                println!("Unable to spawn child: {}", e);
+                runningjob.failed().ok();
+                return;
+            },
+        };
         std::thread::spawn(move || {
-            // unix_daemonize::daemonize_redirect(
-            //     logpath.clone(), logpath.clone(),
-            //     unix_daemonize::ChdirMode::ChdirRoot).unwrap();
-            let mut cmd = std::process::Command::new(&runningjob.job.command[0]);
-            let fd = f.into_raw_fd();
-            let stderr = unsafe {
-                std::process::Stdio::from_raw_fd(fd)
-            };
-            let stdout = unsafe {
-                std::process::Stdio::from_raw_fd(fd)
-            };
-            cmd.args(&runningjob.job.command[1..]).current_dir(&runningjob.job.directory)
-                .stderr(stderr)
-                .stdout(stdout)
-                .stdin(std::process::Stdio::null());
-            match cmd.status() {
+            match child.wait() {
                 Err(e) => {
                     println!("Error running {:?}: {}", runningjob.job.command, e);
                 },
@@ -268,7 +281,7 @@ impl Status {
                     println!("Done running {:?}: {}", runningjob.job.jobname, st);
                 }
             }
-            if let Err(e) = runningjob.job.change_status(Path::new(RUNNING), Path::new(COMPLETED)) {
+            if let Err(e) = runningjob.completed() {
                 println!("Unable to change status of completed job {} ({})",
                          &runningjob.job.jobname, e);
                 return;
