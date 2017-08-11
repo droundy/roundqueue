@@ -17,6 +17,7 @@ use std::io::{Result,Write,Read};
 use std::collections::HashSet;
 
 use std::os::unix::io::{FromRawFd,IntoRawFd};
+use std::os::unix::process::CommandExt;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct RunningJob {
@@ -295,7 +296,11 @@ impl Status {
         cmd.args(&job.command[1..]).current_dir(&job.directory)
             .stderr(stderr)
             .stdout(stdout)
-            .stdin(std::process::Stdio::null());
+            .stdin(std::process::Stdio::null())
+            .before_exec(|| {
+                // make child processes always be maximally nice!
+                unsafe { libc::nice(19); Ok(()) }
+        });
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
