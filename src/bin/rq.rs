@@ -160,6 +160,8 @@ fn do_q() -> Result<()> {
     status.waiting.reverse();
     status.running.sort_by_key(|j| j.started);
     status.running.reverse();
+    println!("STATU USER {:10} {:6} {:6} {:30}",
+             "NODE", "RTIME", "SUBMIT", "JOBNAME");
     for j in status.waiting.iter() {
         println!("W {:8} {:10} {:6} {:6} {:30}",
                  homedir_to_username(&j.home_dir),
