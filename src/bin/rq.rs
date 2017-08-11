@@ -53,6 +53,10 @@ fn main() {
                      .help("the name of the job to cancel"))
         )
         .subcommand(
+            clap::SubCommand::with_name("nodes")
+                .about("show node information")
+        )
+        .subcommand(
             clap::SubCommand::with_name("q")
                 .about("show the queue")
                 .arg(clap::Arg::with_name("verbose")
@@ -111,6 +115,9 @@ fn main() {
                 println!("hello world");
             }
         },
+        ("nodes", _) => {
+            do_nodes().unwrap();
+        },
         ("q", _) => {
             do_q().unwrap();
         },
@@ -168,6 +175,21 @@ fn do_q() -> Result<()> {
                  pretty_duration(j.job.wait_duration()),
                  &j.job.jobname,
         );
+    }
+    Ok(())
+}
+
+fn do_nodes() -> Result<()> {
+    let status = roundqueue::Status::new()?;
+    println!("{:8} {:>2}/{:<2} {:5}",
+             "NODE", "R", "C", "HYPER");
+    for h in status.nodes.iter() {
+        let running = status.running.iter().filter(|j| j.node == h.hostname).count();
+        println!("{:8} {:>2}/{:<2} {:5}",
+                 h.hostname,
+                 running,
+                 h.physical_cores,
+                 h.logical_cpus);
     }
     Ok(())
 }

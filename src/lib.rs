@@ -158,7 +158,7 @@ pub struct Status {
     pub homedirs_sharing_host: Vec<PathBuf>,
     pub waiting: Vec<Job>,
     pub running: Vec<RunningJob>,
-    //pub completed: Vec<RunningJob>,
+    pub nodes: Vec<DaemonInfo>,
 }
 
 impl Status {
@@ -167,10 +167,18 @@ impl Status {
             homedirs_sharing_host: Vec::new(),
             waiting: Vec::new(),
             running: Vec::new(),
-            // completed: Vec::new(),
+            nodes: Vec::new(),
         };
         let root_home = PathBuf::from("/home");
         let host = hostname::get_hostname().unwrap();
+        let my_homedir = std::env::home_dir().unwrap();
+        for node in std::fs::read_dir(my_homedir.join(RQ)) {
+            for node in node.flat_map(|r| r.ok()) {
+                if let Ok(dinfo) = DaemonInfo::read(&my_homedir.join(RQ).join(node.path())) {
+                    status.nodes.push(dinfo);
+                }
+            }
+        }
         // Look for all the jobs!
         for userdir in std::fs::read_dir("/home")? {
             if let Ok(userdir) = userdir {
@@ -349,7 +357,7 @@ pub fn spawn_runner() -> Result<()> {
         Some(home.join(RQ).join(&host).with_extension("log")),
         Some(home.join(RQ).join(&host).with_extension("log")),
         unix_daemonize::ChdirMode::ChdirRoot).unwrap();
-    write_pid(&home.join(RQ).join(&host))?;
+    write_pid()?;
     println!("==================\nRestarting runner!");
     let (notify_tx, notify_rx) = std::sync::mpsc::channel();
     let mut old_status = Status::new()?;
@@ -405,16 +413,18 @@ pub fn spawn_runner() -> Result<()> {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-struct DaemonInfo {
-    pid: libc::pid_t,
-    physical_cores: usize,
-    logical_cpus: usize,
-    restart_time: Duration,
+pub struct DaemonInfo {
+    pub hostname: String,
+    pub pid: libc::pid_t,
+    pub physical_cores: usize,
+    pub logical_cpus: usize,
+    pub restart_time: Duration,
 }
 
 impl DaemonInfo {
     fn new() -> DaemonInfo {
         DaemonInfo {
+            hostname: hostname::get_hostname().unwrap(),
             pid: unsafe { libc::getpid() },
             physical_cores: num_cpus::get_physical(),
             logical_cpus: num_cpus::get(),
@@ -436,8 +446,10 @@ fn read_pid(fname: &Path) -> Result<libc::pid_t> {
     Ok(DaemonInfo::read(fname)?.pid)
 }
 
-fn write_pid(fname: &Path) -> Result<()> {
-    let mut f = std::fs::File::create(fname)?;
+fn write_pid() -> Result<()> {
+    let home = std::env::home_dir().unwrap();
+    let host = hostname::get_hostname().unwrap();
+    let mut f = std::fs::File::create(&home.join(RQ).join(&host))?;
     f.write_all(&serde_json::to_string(&DaemonInfo::new()).unwrap().as_bytes())
 }
 
