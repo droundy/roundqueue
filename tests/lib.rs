@@ -131,4 +131,5 @@ fn rq_run_with_dash_dash_flags() {
     let tempdir = TempDir::new(&format!("tests/temp-homes/test-{}", line!()));
     let out = tempdir.rq(&["run", "--", "echo", "-n", "hello world"]);
     assert!(out.status.success());
+    tempdir.no_such_file("hello world I just want to silence a warning");
 }
