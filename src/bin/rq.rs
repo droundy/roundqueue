@@ -30,7 +30,7 @@ fn main() {
                      .long("output")
                      .takes_value(true)
                      .value_name("OUTFILE")
-                     .default_value("round-queue.log")
+                     .default_value(DEFAULT_OUTPUT)
                      .help("the file for stdout and stderr"))
                 .arg(clap::Arg::with_name("verbose")
                      .long("verbose")
@@ -132,13 +132,18 @@ fn main() {
                 }
             }
             let mut jn = String::from(m.value_of("jobname").unwrap());
-            if jn == "" {
+            let output = if jn == "" {
                 jn = command.join(" ");
-            }
+                std::path::PathBuf::from(m.value_of("output").unwrap())
+            } else {
+                if m.value_of("output").unwrap() == DEFAULT_OUTPUT {
+                    std::path::PathBuf::from(&jn).with_extension("out")
+                } else {
+                    std::path::PathBuf::from(m.value_of("output").unwrap())
+                }
+            };
             println!("submitted {:?}", &jn);
-            roundqueue::Job::new(command, jn,
-                                 std::path::PathBuf::from(m.value_of("output").unwrap())
-            ).unwrap().submit().unwrap()
+            roundqueue::Job::new(command, jn, output).unwrap().submit().unwrap()
         },
         (x, _) => {
             eprintln!("Invalid subcommand {}!", x);
@@ -208,3 +213,5 @@ fn pretty_duration(time: std::time::Duration) -> String {
         format!("{}h:{:02}m", secs/60/60, (secs/60)%60)
     }
 }
+
+const DEFAULT_OUTPUT: &'static str = "round-queue.log";

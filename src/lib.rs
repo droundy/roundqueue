@@ -170,9 +170,11 @@ impl Status {
             running: Vec::new(),
             nodes: Vec::new(),
         };
-        let root_home = PathBuf::from("/home");
         let host = hostname::get_hostname().unwrap();
         let my_homedir = std::env::home_dir().unwrap();
+        let mut root_home = my_homedir.clone();
+        root_home.pop();
+        let root_home = root_home;
         for node in std::fs::read_dir(my_homedir.join(RQ)) {
             for node in node.flat_map(|r| r.ok()) {
                 if let Ok(dinfo) = DaemonInfo::read(&my_homedir.join(RQ).join(node.path())) {
@@ -181,7 +183,7 @@ impl Status {
             }
         }
         // Look for all the jobs!
-        for userdir in std::fs::read_dir("/home")? {
+        for userdir in root_home.read_dir()? {
             if let Ok(userdir) = userdir {
                 let rqdir = userdir.path().join(RQ);
                 // First check whether this user is running a
@@ -349,6 +351,9 @@ pub fn spawn_runner() -> Result<()> {
     ensure_directories()?;
     let home = std::env::home_dir().unwrap();
     let host = hostname::get_hostname().unwrap();
+    let mut root_home = home.clone();
+    root_home.pop();
+    let root_home = root_home;
 
     if let Ok(pid_old) = read_pid(&home.join(RQ).join(&host)) {
         unsafe { libc::kill(pid_old, libc::SIGTERM); }
@@ -363,7 +368,8 @@ pub fn spawn_runner() -> Result<()> {
         Some(home.join(RQ).join(&host).with_extension("log")),
         unix_daemonize::ChdirMode::ChdirRoot).unwrap();
     write_pid()?;
-    println!("==================\nRestarting runner!");
+    println!("==================\nRestarting runner process {}!",
+             DaemonInfo::new().pid);
     let (notify_tx, notify_rx) = std::sync::mpsc::channel();
     let mut old_status = Status::new()?;
     let mut watcher =
@@ -378,7 +384,7 @@ pub fn spawn_runner() -> Result<()> {
     // we may want to run a job of our own.  Even if they don't
     // currently have a daemon running (and thus no jobs), they may
     // start a daemon in the future, while we are still running!
-    for userdir in std::fs::read_dir("/home")? {
+    for userdir in root_home.read_dir()? {
         if let Ok(userdir) = userdir {
             watcher.watch(userdir.path().join(RQ).join(RUNNING),
                           notify::RecursiveMode::NonRecursive).ok();
@@ -402,6 +408,15 @@ pub fn spawn_runner() -> Result<()> {
                 }
             }
         }
+        // Now check whether we are in fact the real daemon running on
+        // this node/home combination.
+        let daemon_running = DaemonInfo::read_my_own().unwrap();
+        let myself = DaemonInfo::new();
+        if daemon_running.pid != myself.pid {
+            println!("I {} have been replaced by {}.", myself.pid, daemon_running.pid);
+            std::process::exit(1);
+        }
+        // Now check whether there is a job to be run...
         let status = Status::new().unwrap();
         let running = status.running.iter().filter(|j| &j.node == &host).count();
         let waiting = status.waiting.iter().count();
@@ -435,6 +450,11 @@ impl DaemonInfo {
             logical_cpus: num_cpus::get(),
             restart_time: now(),
         }
+    }
+    fn read_my_own() -> Result<DaemonInfo> {
+        let home = std::env::home_dir().unwrap();
+        let host = hostname::get_hostname().unwrap();
+        DaemonInfo::read(&home.join(RQ).join(&host))
     }
     fn read(fname: &Path) -> Result<DaemonInfo> {
         let mut f = std::fs::File::open(fname)?;
