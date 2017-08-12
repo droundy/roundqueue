@@ -43,6 +43,7 @@ impl TempDir {
         } else {
             let s = s.unwrap();
             println!("output is:\n{}", String::from_utf8_lossy(&s.stdout));
+            println!("stderr is:\n{}", String::from_utf8_lossy(&s.stderr));
             return s;
         }
         s.unwrap()
@@ -116,4 +117,18 @@ fn rq_jobname_gives_default_output() {
     let out = tempdir.rq(&[]);
     assert!(out.status.success());
     tempdir.file_exists("goodname.out");
+}
+
+#[test]
+fn rq_run_with_flags() {
+    let tempdir = TempDir::new(&format!("tests/temp-homes/test-{}", line!()));
+    let out = tempdir.rq(&["run", "echo", "-n", "hello world"]);
+    assert!(out.status.success());
+}
+
+#[test]
+fn rq_run_with_dash_dash_flags() {
+    let tempdir = TempDir::new(&format!("tests/temp-homes/test-{}", line!()));
+    let out = tempdir.rq(&["run", "--", "echo", "-n", "hello world"]);
+    assert!(out.status.success());
 }

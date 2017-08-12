@@ -1,3 +1,4 @@
+#[macro_use]
 extern crate clap;
 
 extern crate roundqueue;
@@ -7,8 +8,12 @@ use std::os::unix::fs::PermissionsExt;
 
 fn main() {
     let m = clap::App::new("rq")
+        .version(crate_version!())
+        .about(crate_description!())
         .subcommand(
             clap::SubCommand::with_name("run")
+                .setting(clap::AppSettings::TrailingVarArg)
+                .version(crate_version!())
                 .about("submit a new job")
                 .arg(clap::Arg::with_name("cores")
                      .short("c")
@@ -45,6 +50,7 @@ fn main() {
         )
         .subcommand(
             clap::SubCommand::with_name("cancel")
+                .version(crate_version!())
                 .about("cancel a job")
                 .arg(clap::Arg::with_name("jobname")
                      .short("J")
@@ -55,10 +61,12 @@ fn main() {
         )
         .subcommand(
             clap::SubCommand::with_name("nodes")
+                .version(crate_version!())
                 .about("show node information")
         )
         .subcommand(
             clap::SubCommand::with_name("q")
+                .version(crate_version!())
                 .about("show the queue")
                 .arg(clap::Arg::with_name("verbose")
                      .long("verbose")
@@ -68,6 +76,7 @@ fn main() {
         )
         .subcommand(
             clap::SubCommand::with_name("daemon")
+                .version(crate_version!())
                 .about("spawn the runner daemon")
                 .arg(clap::Arg::with_name("verbose")
                      .long("verbose")
