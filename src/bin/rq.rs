@@ -22,7 +22,7 @@ fn main() {
                      .value_name("CPUS")
                      .default_value("1")
                      .hide_default_value(true)
-                     .help("the number of cores the job requires"))
+                     .help("the number of cores the job requires [default: 1]"))
                 .arg(clap::Arg::with_name("jobname")
                      .short("J")
                      .long("job-name")
