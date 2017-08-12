@@ -83,10 +83,13 @@ pub struct Job {
     pub jobname: String,
     pub output: PathBuf,
     pub submitted: Duration,
+    #[serde(default)]
+    pub cores: usize,
 }
 
 impl Job {
-    pub fn new(cmd: Vec<String>, jobname: String, output: PathBuf) -> Result<Job> {
+    pub fn new(cmd: Vec<String>, jobname: String, output: PathBuf, cores: usize)
+               -> Result<Job> {
         Ok(Job {
             directory: std::env::current_dir()?,
             home_dir: std::env::home_dir().unwrap(),
@@ -94,6 +97,7 @@ impl Job {
             jobname: jobname,
             output: output,
             submitted: now(),
+            cores: cores,
         })
     }
     pub fn cancel(&self) -> Result<()> {
@@ -238,14 +242,17 @@ impl Status {
         // this host*.  Thus this ignores any waiting jobs that cannot
         // run on this host because their user does not have a daemon
         // running on this host.
+        let cpus = num_cpus::get_physical();
         let waiting: Vec<_> =  self.waiting.iter()
             .filter(|j| self.homedirs_sharing_host.contains(&j.home_dir))
+            .filter(|j| j.cores <= cpus)
             .map(|j| j.home_dir.clone()).collect();
         if waiting.len() == 0 { return; }
         let mut next_homedir = HashSet::new();
         let mut least_running = 100000;
         for hd in waiting.into_iter() {
-            let count = self.running.iter().filter(|j| &j.job.home_dir == &hd).count();
+            let count = self.running.iter().filter(|j| &j.job.home_dir == &hd)
+                .map(|j| j.job.cores).sum();
             if count < least_running {
                 next_homedir.insert(hd);
                 least_running = count;
@@ -255,8 +262,8 @@ impl Status {
             return;
         }
         let mut job = self.waiting[0].clone();
-        let mut earliest_submitted = job.submitted;
-        for j in self.waiting.into_iter() {
+        let mut earliest_submitted = std::time::Duration::from_secs(0xffffffffffffff);
+        for j in self.waiting.into_iter().filter(|j| j.cores <= cpus) {
             if next_homedir.contains(&j.home_dir) && j.submitted < earliest_submitted {
                 earliest_submitted = j.submitted;
                 job = j;
@@ -265,6 +272,14 @@ impl Status {
         if &job.home_dir != home_dir {
             return;
         }
+
+        let running_cores: usize = self.running.iter().filter(|j| &j.node == &host)
+            .map(|j| j.job.cores).sum();
+        if cpus < running_cores + job.cores {
+            println!("Waiting for more cores for {}", job.jobname);
+            return;
+        }
+
         println!("starting {:?}", &job.jobname);
         let mut f = match std::fs::OpenOptions::new()
             .create(true)
@@ -418,7 +433,8 @@ pub fn spawn_runner() -> Result<()> {
         }
         // Now check whether there is a job to be run...
         let status = Status::new().unwrap();
-        let running = status.running.iter().filter(|j| &j.node == &host).count();
+        let running = status.running.iter().filter(|j| &j.node == &host)
+            .map(|j| j.job.cores).sum();
         let waiting = status.waiting.iter().count();
         if old_status != status {
             println!("Currently using {}/{} cores, with {} jobs waiting.",

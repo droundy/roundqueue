@@ -25,9 +25,9 @@ To submit a job, you can run something like
 
     rq run --job-name my-compute-job ./compute --flag-for-compute --other-flag
 
-in the directory where you want this command to run.  It is currently
-assumed that all jobs are single-cpu jobs.  You can see the running
-(and waiting to run) jobs by simply executing
+in the directory where you want this command to run.  By default, jobs
+are assumed to run on a single cpu.  You can see the running (and
+waiting to run) jobs by simply executing
 
     rq
 
