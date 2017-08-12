@@ -3,6 +3,7 @@ extern crate clap;
 extern crate roundqueue;
 
 use std::io::Result;
+use std::os::unix::fs::PermissionsExt;
 
 fn main() {
     let m = clap::App::new("rq")
@@ -142,6 +143,10 @@ fn main() {
                     std::path::PathBuf::from(m.value_of("output").unwrap())
                 }
             };
+            if !path_has(&command[0]) {
+                println!("No such command: {:?}", &command[0]);
+                std::process::exit(1);
+            }
             println!("submitted {:?}", &jn);
             roundqueue::Job::new(command, jn, output).unwrap().submit().unwrap()
         },
@@ -215,3 +220,36 @@ fn pretty_duration(time: std::time::Duration) -> String {
 }
 
 const DEFAULT_OUTPUT: &'static str = "round-queue.log";
+
+fn path_has(cmd: &str) -> bool {
+    let p = std::path::PathBuf::from(cmd);
+    if p.components().count() > 1 {
+        // this cmd has "/" in it, so we need to look in the current
+        // directory...
+        is_executable(&p)
+    } else {
+        let key = "PATH";
+        match std::env::var_os(key) {
+            Some(paths) => {
+                for path in std::env::split_paths(&paths) {
+                    if is_executable(&path.join(&p)) {
+                        return true;
+                    }
+                }
+                false
+            }
+            None => {
+                println!("PATH is undefined!");
+                false
+            }
+        }
+    }
+}
+
+fn is_executable(p: &std::path::Path) -> bool {
+    if let Ok(md) = p.metadata() {
+        (md.permissions().mode() & 1) == 1
+    } else {
+        false
+    }
+}

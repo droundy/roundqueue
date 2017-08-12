@@ -98,12 +98,12 @@ fn rq_version() {
     tempdir.rq(&["--version"]);
 }
 
-// #[test]
-// fn rq_invalid_exe() {
-//     let tempdir = TempDir::new(&format!("tests/temp-homes/test-{}", line!()));
-//     let out = tempdir.rq(&["run", "path/to/garbage"]);
-//     assert!(!out.status.success());
-// }
+#[test]
+fn rq_invalid_exe() {
+    let tempdir = TempDir::new(&format!("tests/temp-homes/test-{}", line!()));
+    let out = tempdir.rq(&["run", "path/to/garbage"]);
+    assert!(!out.status.success());
+}
 
 #[test]
 fn rq_jobname_gives_default_output() {
