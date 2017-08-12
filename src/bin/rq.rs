@@ -182,14 +182,14 @@ fn do_q() -> Result<()> {
     println!("STATU USER {:10} {:6} {:6} {:30}",
              "NODE", "RTIME", "SUBMIT", "JOBNAME");
     for j in status.waiting.iter() {
-        println!("W {:8} {:10} {:6} {:6} {:30}",
+        println!("W {:>8} {:10} {:6} {:6} {:30}",
                  homedir_to_username(&j.home_dir),
                  "","",
                  pretty_duration(j.wait_duration()),
                  &j.jobname);
     }
     for j in status.running.iter() {
-        println!("R {:8} {:10} {:6} {:6} {:30}",
+        println!("R {:>8} {:10} {:6} {:6} {:30}",
                  homedir_to_username(&j.job.home_dir),
                  &j.node,
                  pretty_duration(j.duration()),
