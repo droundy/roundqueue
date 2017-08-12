@@ -3,24 +3,6 @@ extern crate clap;
 
 extern crate roundqueue;
 
-macro_rules! nice_value_t {
-    ($m:ident, $v:expr, $t:ty) => {
-        nice_value_t!($m.value_of($v), $t)
-    };
-    ($m:ident.value_of($v:expr), $t:ty) => {
-        if let Some(v) = $m.value_of($v) {
-            match v.parse::<$t>() {
-                Ok(val) => Ok(val),
-                Err(_)  =>
-                    Err(::clap::Error::value_validation_auto(
-                        format!("The argument '{}' isn't a valid value for --{}", v, $v))),
-            }
-        } else {
-            Err(::clap::Error::argument_not_found_auto($v))
-        }
-    };
-}
-
 use std::io::Result;
 use std::os::unix::fs::PermissionsExt;
 
@@ -174,7 +156,7 @@ fn main() {
                 println!("No such command: {:?}", &command[0]);
                 std::process::exit(1);
             }
-            let ncores = nice_value_t!(m, "cores", usize).unwrap_or_else(|e| e.exit());
+            let ncores = value_t!(m, "cores", usize).unwrap_or_else(|e| e.exit());
             println!("submitted {:?}", &jn);
             roundqueue::Job::new(command, jn, output, ncores).unwrap().submit().unwrap()
         },
