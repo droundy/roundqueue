@@ -442,7 +442,7 @@ pub fn spawn_runner() -> Result<()> {
         let myself = DaemonInfo::new();
         if daemon_running.pid != myself.pid {
             println!("I {} have been replaced by {}.", myself.pid, daemon_running.pid);
-            std::process::exit(1);
+            return;
         }
         // Now check whether there is a job to be run...
         let status = Status::new().unwrap();
