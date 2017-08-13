@@ -9,6 +9,8 @@ extern crate num_cpus;
 extern crate notify;
 extern crate libc;
 
+mod longthreads;
+
 use notify::{Watcher};
 
 use std::path::{Path,PathBuf};
@@ -237,7 +239,7 @@ impl Status {
     /// run_next consumes the status to enforce that we must re-read
     /// the status before attempting anything else.  This is because
     /// another node may have run something or submitted something.
-    fn run_next(self, host: &str, home_dir: &Path) {
+    fn run_next(self, host: &str, home_dir: &Path, threads: &longthreads::Threads) {
         // "waiting" is the set of jobs that are waiting to run *on
         // this host*.  Thus this ignores any waiting jobs that cannot
         // run on this host because their user does not have a daemon
@@ -306,7 +308,7 @@ impl Status {
         let runningjob = RunningJob {
             started: now(),
             node: String::from(host),
-            job: job,
+            job: job.clone(),
             pid: 0,
         };
         if let Err(e) = runningjob.save(Path::new(RUNNING)) {
@@ -351,7 +353,7 @@ impl Status {
             return;
         }
         // let logpath = Some(home_dir.join(RQ).join(&host).with_extension("log"));
-        std::thread::spawn(move || {
+        threads.spawn(move || {
             match child.wait() {
                 Err(e) => {
                     println!("Error running {:?}: {}", runningjob.job.command, e);
@@ -383,11 +385,6 @@ pub fn spawn_runner() -> Result<()> {
     root_home.pop();
     let root_home = root_home;
 
-    if let Ok(pid_old) = read_pid(&home.join(RQ).join(&host)) {
-        unsafe { libc::kill(pid_old, libc::SIGTERM); }
-        std::thread::sleep(Duration::from_secs(2));
-        unsafe { libc::kill(pid_old, libc::SIGKILL); }
-    }
     let cpus = num_cpus::get_physical();
     println!("I am spawning a runner for {} with {} cpus in {:?}!",
              &host, cpus, &home);
@@ -425,6 +422,7 @@ pub fn spawn_runner() -> Result<()> {
             notify_tx.send(notify::DebouncedEvent::Rescan).unwrap();
         }
     });
+    let threads = longthreads::Threads::new();
     loop {
         if let Ok(rr) = home.join(RQ).join(CANCELING).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
@@ -442,7 +440,7 @@ pub fn spawn_runner() -> Result<()> {
         let myself = DaemonInfo::new();
         if daemon_running.pid != myself.pid {
             println!("I {} have been replaced by {}.", myself.pid, daemon_running.pid);
-            return;
+            return Ok(()); // being replaced is not an error!
         }
         // Now check whether there is a job to be run...
         let status = Status::new().unwrap();
@@ -455,7 +453,7 @@ pub fn spawn_runner() -> Result<()> {
         }
         old_status = status.clone();
         if cpus > running && waiting > 0 {
-            status.run_next(&host, &home);
+            status.run_next(&host, &home, &threads);
         }
         notify_rx.recv().unwrap();
     }
