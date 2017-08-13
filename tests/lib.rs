@@ -144,6 +144,9 @@ fn rq_restart_daemon_while_job_is_running() {
     std::thread::sleep(std::time::Duration::from_secs(1));
     let out = tempdir.rq(&["daemon"]);
     assert!(out.status.success());
+    let out = tempdir.rq(&["run", "sh", "-c", "echo goodbye world > farewell"]);
+    assert!(out.status.success());
     std::thread::sleep(std::time::Duration::from_secs(3));
     tempdir.file_exists("greeting");
+    tempdir.file_exists("farewell");
 }
