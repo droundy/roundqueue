@@ -95,20 +95,20 @@ fn location_of_executables() -> std::path::PathBuf {
 
 #[test]
 fn rq_version() {
-    let tempdir = TempDir::new(&format!("tests/temp-homes/test-{}", line!()));
+    let tempdir = TempDir::new(&format!("tests/temp-homes/home-{}/user", line!()));
     tempdir.rq(&["--version"]);
 }
 
 #[test]
 fn rq_invalid_exe() {
-    let tempdir = TempDir::new(&format!("tests/temp-homes/test-{}", line!()));
+    let tempdir = TempDir::new(&format!("tests/temp-homes/home-{}/user", line!()));
     let out = tempdir.rq(&["run", "path/to/garbage"]);
     assert!(!out.status.success());
 }
 
 #[test]
 fn rq_jobname_gives_default_output() {
-    let tempdir = TempDir::new(&format!("tests/temp-homes/test-{}", line!()));
+    let tempdir = TempDir::new(&format!("tests/temp-homes/home-{}/user", line!()));
     let out = tempdir.rq(&["daemon"]);
     assert!(out.status.success());
     let out = tempdir.rq(&["run", "-J", "goodname", "echo", "hello world"]);
@@ -121,14 +121,14 @@ fn rq_jobname_gives_default_output() {
 
 #[test]
 fn rq_run_with_flags() {
-    let tempdir = TempDir::new(&format!("tests/temp-homes/test-{}", line!()));
+    let tempdir = TempDir::new(&format!("tests/temp-homes/home-{}/user", line!()));
     let out = tempdir.rq(&["run", "echo", "-n", "hello world"]);
     assert!(out.status.success());
 }
 
 #[test]
 fn rq_run_with_dash_dash_flags() {
-    let tempdir = TempDir::new(&format!("tests/temp-homes/test-{}", line!()));
+    let tempdir = TempDir::new(&format!("tests/temp-homes/home-{}/user", line!()));
     let out = tempdir.rq(&["run", "--", "echo", "-n", "hello world"]);
     assert!(out.status.success());
     tempdir.no_such_file("hello world I just want to silence a warning");
@@ -136,7 +136,7 @@ fn rq_run_with_dash_dash_flags() {
 
 #[test]
 fn rq_restart_daemon_while_job_is_running() {
-    let tempdir = TempDir::new(&format!("tests/temp-homes/test-{}", line!()));
+    let tempdir = TempDir::new(&format!("tests/temp-homes/home-{}/user", line!()));
     let out = tempdir.rq(&["daemon"]);
     assert!(out.status.success());
     let out = tempdir.rq(&["run", "sh", "-c", "sleep 2 && echo hello world > greeting"]);
