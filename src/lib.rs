@@ -300,6 +300,19 @@ impl Status {
             println!("Unable to change status of job {} ({})", &job.jobname, e);
             return;
         }
+        // First save as a RunningJob, so that other daemons will
+        // recognize it as an actual running job when they count.  We
+        // will rewrite it later when we know the actual pid.
+        let runningjob = RunningJob {
+            started: now(),
+            node: String::from(host),
+            job: job,
+            pid: 0,
+        };
+        if let Err(e) = runningjob.save(Path::new(RUNNING)) {
+            println!("Yikes, unable to save job? {}", e);
+            return;
+        }
 
         // First spawn the child...
         let mut cmd = std::process::Command::new(&job.command[0]);
@@ -335,7 +348,7 @@ impl Status {
         };
         if let Err(e) = runningjob.save(Path::new(RUNNING)) {
             println!("Yikes, unable to save job? {}", e);
-            std::process::exit(1);
+            return;
         }
         // let logpath = Some(home_dir.join(RQ).join(&host).with_extension("log"));
         std::thread::spawn(move || {
