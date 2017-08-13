@@ -133,3 +133,17 @@ fn rq_run_with_dash_dash_flags() {
     assert!(out.status.success());
     tempdir.no_such_file("hello world I just want to silence a warning");
 }
+
+#[test]
+fn rq_restart_daemon_while_job_is_running() {
+    let tempdir = TempDir::new(&format!("tests/temp-homes/test-{}", line!()));
+    let out = tempdir.rq(&["daemon"]);
+    assert!(out.status.success());
+    let out = tempdir.rq(&["run", "sh", "-c", "sleep 2 && echo hello world > greeting"]);
+    assert!(out.status.success());
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    let out = tempdir.rq(&["daemon"]);
+    assert!(out.status.success());
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    tempdir.file_exists("greeting");
+}
