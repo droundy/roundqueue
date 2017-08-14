@@ -58,6 +58,14 @@ fn main() {
                      .takes_value(true)
                      .value_name("NAME")
                      .help("the name of the job to cancel"))
+                .arg(clap::Arg::with_name("waiting")
+                     .long("waiting")
+                     .short("w")
+                     .help("only cancel jobs that have not yet started running"))
+                .arg(clap::Arg::with_name("all")
+                     .long("all")
+                     .short("a")
+                     .help("cancel all jobs"))
         )
         .subcommand(
             clap::SubCommand::with_name("nodes")
@@ -90,25 +98,32 @@ fn main() {
             do_daemon().unwrap();
         },
         ("cancel", Some(m)) => {
-            let status = roundqueue::Status::new().unwrap();
-            if let Some(jn) = m.value_of("jobname") {
-                let mut retry = true;
-                while retry {
-                    retry = false;
-                    for j in status.waiting.iter()
-                        .filter(|j| j.jobname == jn) {
-                        println!("W {:8} {:10} {:6} {:6} {:30}",
-                                 homedir_to_username(&j.home_dir),
-                                 "","",
-                                 pretty_duration(j.wait_duration()),
-                                 &j.jobname);
-                        if j.cancel().is_err() {
-                            println!("difficulty canceling {} ... did it just start?", &j.jobname);
-                        }
+            let job_selected = move |j: &roundqueue::Job| -> bool {
+                if m.is_present("all") {
+                    true
+                } else if let Some(jn) = m.value_of("jobname") {
+                    j.jobname == jn
+                } else {
+                    false
+                }
+            };
+            let mut retry = true;
+            while retry {
+                let status = roundqueue::Status::new().unwrap();
+                retry = false;
+                for j in status.waiting.iter().filter(|j| job_selected(j)) {
+                    println!("W {:8} {:10} {:6} {:6} {:30}",
+                             homedir_to_username(&j.home_dir),
+                             "","",
+                             pretty_duration(j.wait_duration()),
+                             &j.jobname);
+                    if j.cancel().is_err() && !m.is_present("waiting") {
+                        println!("difficulty canceling {} ... did it just start?", &j.jobname);
+                        retry = true;
                     }
-                    for j in status.running.iter()
-                        .filter(|j| j.job.jobname == jn)
-                    {
+                }
+                if !m.is_present("waiting") {
+                    for j in status.running.iter().filter(|j| job_selected(&j.job)) {
                         println!("R {:8} {:10} {:6} {:6} {:30}",
                                  homedir_to_username(&j.job.home_dir),
                                  &j.node,
@@ -121,8 +136,6 @@ fn main() {
                         }
                     }
                 }
-            } else {
-                println!("hello world");
             }
         },
         ("nodes", _) => {

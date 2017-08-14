@@ -171,6 +171,61 @@ fn do_not_overload_cpu() {
 }
 
 #[test]
+fn cancel_by_jobname() {
+    let tempdir = TempDir::new(&format!("tests/temp-homes/home-{}/user", line!()));
+    assert!(tempdir.rq(&["daemon"]).status.success());
+    assert!(tempdir.rq(&["run", "-J", "greet",
+                         "sh", "-c", "sleep 2 && echo hello > greeting"])
+            .status.success());
+    assert!(tempdir.rq(&["run", "-J", "hello",
+                         "sh", "-c", "sleep 2 && echo hello > hello"])
+            .status.success());
+    assert!(tempdir.rq(&["cancel", "--job-name", "greet"]).status.success());
+    assert!(tempdir.rq(&[]).status.success());
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    tempdir.no_such_file("greeting");
+    tempdir.file_exists("hello");
+}
+
+#[test]
+fn cancel_all() {
+    let tempdir = TempDir::new(&format!("tests/temp-homes/home-{}/user", line!()));
+    assert!(tempdir.rq(&["daemon"]).status.success());
+    assert!(tempdir.rq(&["run", "-J", "greet",
+                         "sh", "-c", "sleep 2 && echo hello > greeting"])
+            .status.success());
+    assert!(tempdir.rq(&["run", "-J", "hello",
+                         "sh", "-c", "sleep 2 && echo hello > hello"])
+            .status.success());
+    assert!(tempdir.rq(&["cancel", "--all"]).status.success());
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    tempdir.no_such_file("greeting");
+    tempdir.no_such_file("hello");
+}
+
+#[test]
+fn cancel_waiting() {
+    let tempdir = TempDir::new(&format!("tests/temp-homes/home-{}/user", line!()));
+    let cpus = num_cpus::get_physical();
+    assert!(tempdir.rq(&["daemon"]).status.success());
+    assert!(tempdir.rq(&["run", "-J", "greet",
+                         "sh", "-c", "sleep 2 && echo hello > greeting"])
+            .status.success());
+    for _ in 0..cpus-1 {
+        assert!(tempdir.rq(&["run", "sleep", "2"])
+                .status.success());
+    }
+    assert!(tempdir.rq(&["run", "-J", "hello", "sh", "-c", "hello > hello"])
+            .status.success());
+    assert!(tempdir.rq(&["daemon"]).status.success());
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    assert!(tempdir.rq(&["cancel", "--all", "--waiting"]).status.success());
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    tempdir.file_exists("greeting");
+    tempdir.no_such_file("hello");
+}
+
+#[test]
 fn polite_users_share_cpus() {
     let home = format!("tests/temp-homes/home-{}", line!());
     let rude = TempDir::new(&format!("{}/rude", &home));
@@ -188,9 +243,12 @@ fn polite_users_share_cpus() {
     println!("This next job won't run because all the cpus are busy sleeping.");
     assert!(rude.rq(&["run", "sh", "-c", "echo hello world > greeting"]).status.success());
     assert!(polite.rq(&["run", "sh", "-c", "echo hello > greeting"]).status.success());
+    std::thread::sleep(std::time::Duration::from_secs(1));
     assert!(rude.rq(&["daemon"]).status.success());
     assert!(polite.rq(&["daemon"]).status.success());
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    assert!(rude.rq(&[]).status.success());
+    assert!(polite.rq(&[]).status.success());
+    std::thread::sleep(std::time::Duration::from_secs(10));
     assert!(rude.rq(&[]).status.success());
     assert!(polite.rq(&[]).status.success());
     rude.no_such_file("greeting");
