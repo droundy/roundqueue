@@ -16,7 +16,7 @@ use notify::{Watcher};
 use std::path::{Path,PathBuf};
 use std::time::{SystemTime,Duration,UNIX_EPOCH};
 use std::io::{Result,Write,Read};
-use std::collections::HashSet;
+use std::collections::{HashSet,HashMap};
 
 use std::os::unix::io::{FromRawFd,IntoRawFd};
 use std::os::unix::process::CommandExt;
@@ -386,6 +386,7 @@ pub fn spawn_runner() -> Result<()> {
     let root_home = root_home;
 
     let cpus = num_cpus::get_physical();
+    let hyperthreads = num_cpus::get();
     println!("I am spawning a runner for {} with {} cpus in {:?}!",
              &host, cpus, &home);
     unix_daemonize::daemonize_redirect(
@@ -446,14 +447,38 @@ pub fn spawn_runner() -> Result<()> {
         let status = Status::new().unwrap();
         let running = status.running.iter().filter(|j| &j.node == &host)
             .map(|j| j.job.cores).sum();
-        let waiting = status.waiting.iter().count();
         if old_status != status {
             println!("Currently using {}/{} cores, with {} jobs waiting.",
-                     running, cpus, waiting);
+                     running, cpus, status.waiting.len());
         }
         old_status = status.clone();
-        if cpus > running && waiting > 0 {
+        if cpus > running && status.waiting.len() > 0 {
             status.run_next(&host, &home, &threads);
+        } else if hyperthreads > running && status.waiting.len() > 0 {
+            // We will now decide whether to run a job using a
+            // hyperthread that shares a CPU core.  We do this in
+            // cases where some users are using more than their fair
+            // share of the cluster, in order to ensure low latency
+            // for all users, at the cost of slowing down some jobs.
+            let mut user_running_jobs = HashMap::new();
+            for hd in status.running.iter().map(|j| j.job.home_dir.clone()) {
+                let count = user_running_jobs.get(&hd).unwrap_or(&0)+1;
+                user_running_jobs.insert(hd, count);
+            }
+            let total_cpus: usize = status.nodes.iter().map(|di| di.physical_cores).sum();
+            let total_users = user_running_jobs.len();
+            let cpus_per_user = total_cpus/total_users;
+            let politely_waiting = status.waiting.iter()
+                .filter(|j| user_running_jobs[&j.home_dir] < cpus_per_user)
+                .count();
+            if politely_waiting > 0 {
+                let politely_running = status.running.iter()
+                    .filter(|j| user_running_jobs[&j.job.home_dir] < cpus_per_user)
+                    .count();
+                if cpus > politely_running {
+                    status.run_next(&host, &home, &threads);
+                }
+            }
         }
         notify_rx.recv().unwrap();
     }

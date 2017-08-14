@@ -1,3 +1,4 @@
+extern crate num_cpus;
 
 use std::io::{Write, Read};
 
@@ -149,4 +150,49 @@ fn rq_restart_daemon_while_job_is_running() {
     std::thread::sleep(std::time::Duration::from_secs(3));
     tempdir.file_exists("greeting");
     tempdir.file_exists("farewell");
+}
+
+#[test]
+fn do_not_overload_cpu() {
+    let tempdir = TempDir::new(&format!("tests/temp-homes/home-{}/user", line!()));
+    let cpus = num_cpus::get_physical();
+    let out = tempdir.rq(&["daemon"]);
+    assert!(out.status.success());
+    for _ in 0..cpus {
+        let out = tempdir.rq(&["run", "sleep", "10"]);
+        assert!(out.status.success());
+    }
+    println!("This next job won't run because all the cpus are busy sleeping.");
+    let out = tempdir.rq(&["run", "sh", "-c", "echo hello world > greeting"]);
+    assert!(out.status.success());
+    let out = tempdir.rq(&[]);
+    assert!(out.status.success());
+    tempdir.no_such_file("greeting");
+}
+
+#[test]
+fn polite_users_share_cpus() {
+    let home = format!("tests/temp-homes/home-{}", line!());
+    let rude = TempDir::new(&format!("{}/rude", &home));
+    let polite = TempDir::new(&format!("{}/polite", &home));
+    let cpus = num_cpus::get_physical();
+    if num_cpus::get() <= cpus {
+        println!("this tests requires hyperthreading!");
+        return;
+    }
+    assert!(rude.rq(&["daemon"]).status.success());
+    assert!(polite.rq(&["daemon"]).status.success());
+    for _ in 0..2*cpus {
+        assert!(rude.rq(&["run", "sleep", "100"]).status.success());
+    }
+    println!("This next job won't run because all the cpus are busy sleeping.");
+    assert!(rude.rq(&["run", "sh", "-c", "echo hello world > greeting"]).status.success());
+    assert!(polite.rq(&["run", "sh", "-c", "echo hello > greeting"]).status.success());
+    assert!(rude.rq(&["daemon"]).status.success());
+    assert!(polite.rq(&["daemon"]).status.success());
+    std::thread::sleep(std::time::Duration::from_secs(5));
+    assert!(rude.rq(&[]).status.success());
+    assert!(polite.rq(&[]).status.success());
+    rude.no_such_file("greeting");
+    polite.file_exists("greeting");
 }
