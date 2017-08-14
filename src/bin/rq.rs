@@ -224,10 +224,15 @@ fn do_daemon() -> Result<()> {
 
 fn pretty_duration(time: std::time::Duration) -> String {
     let secs = time.as_secs();
-    if secs < 60*60 {
-        format!("{}:{:02}", secs/60, secs%60)
+    let minute = 60;
+    let hour = 60*minute;
+    let day = 24*hour;
+    if secs < hour {
+        format!("{}:{:02}", secs/minute, secs%minute)
+    } else if secs < day {
+        format!("{}h:{:02}m", secs/hour, (secs%hour)/minute)
     } else {
-        format!("{}h:{:02}m", secs/60/60, (secs/60)%60)
+        format!("{}d-{:02}h", secs/day, (secs%day)/hour)
     }
 }
 
