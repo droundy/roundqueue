@@ -53,3 +53,8 @@ daemon running on will not run that user's jobs.
 
 Each users job information is stored in the `$HOME/.roundqueue/`
 directory.  Each job is a separate file in a subdirectory there.
+
+### rq run
+
+Submitting a job consists of creating a single JSON file in
+`$HOME/.roundqueue/waiting/`.  That's all.
