@@ -66,6 +66,10 @@ fn main() {
                      .long("all")
                      .short("a")
                      .help("cancel all jobs"))
+                .arg(clap::Arg::with_name("more-job-names")
+                     .index(1)
+                     .multiple(true)
+                     .help("job names to cancel"))
         )
         .subcommand(
             clap::SubCommand::with_name("nodes")
@@ -100,13 +104,27 @@ fn main() {
         ("cancel", Some(m)) => {
             let job_selected = move |j: &roundqueue::Job| -> bool {
                 if m.is_present("all") {
-                    true
-                } else if let Some(jn) = m.value_of("jobname") {
-                    j.jobname == jn
-                } else {
-                    false
+                    return true;
                 }
+                if let Some(mut jn) = m.values_of("jobname") {
+                    if jn.any(|jn| jn == j.jobname) { return true; }
+                }
+                if let Some(mut jn) = m.values_of("more-job-names") {
+                    if jn.any(|jn| jn == j.jobname) { return true; }
+                }
+                false
             };
+            let status = roundqueue::Status::new().unwrap();
+            if let Some(jn) = m.values_of("jobname") {
+                for x in jn.filter(|jn| !status.has_jobname(jn)) {
+                    println!("No such job: {:?}", x);
+                }
+            }
+            if let Some(jn) = m.values_of("more-job-names") {
+                for x in jn.filter(|jn| !status.has_jobname(jn)) {
+                    println!("No such job: {:?}", x);
+                }
+            }
             let mut retry = true;
             while retry {
                 let status = roundqueue::Status::new().unwrap();

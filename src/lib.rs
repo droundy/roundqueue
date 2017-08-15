@@ -236,6 +236,10 @@ impl Status {
         }
         Ok(status)
     }
+    pub fn has_jobname(&self, jn: &str) -> bool {
+        self.waiting.iter().any(|j| j.jobname == jn)
+            || self.running.iter().any(|j| j.job.jobname == jn)
+    }
     /// run_next consumes the status to enforce that we must re-read
     /// the status before attempting anything else.  This is because
     /// another node may have run something or submitted something.
