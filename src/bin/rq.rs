@@ -118,7 +118,8 @@ fn main() {
                              pretty_duration(j.wait_duration()),
                              &j.jobname);
                     if j.cancel().is_err() && !m.is_present("waiting") {
-                        println!("difficulty canceling {} ... did it just start?", &j.jobname);
+                        println!("Having difficulty canceling {} ... did it just start?",
+                                 &j.jobname);
                         retry = true;
                     }
                 }
