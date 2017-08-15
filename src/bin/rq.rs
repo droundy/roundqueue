@@ -112,7 +112,7 @@ fn main() {
                 let status = roundqueue::Status::new().unwrap();
                 retry = false;
                 for j in status.waiting.iter().filter(|j| job_selected(j)) {
-                    println!("W {:8} {:10} {:6} {:6} {:30}",
+                    println!("canceling: W {:8} {:10} {:6} {:6} {:30}",
                              homedir_to_username(&j.home_dir),
                              "","",
                              pretty_duration(j.wait_duration()),
@@ -124,7 +124,7 @@ fn main() {
                 }
                 if !m.is_present("waiting") {
                     for j in status.running.iter().filter(|j| job_selected(&j.job)) {
-                        println!("R {:8} {:10} {:6} {:6} {:30}",
+                        println!("canceling: R {:8} {:10} {:6} {:6} {:30}",
                                  homedir_to_username(&j.job.home_dir),
                                  &j.node,
                                  pretty_duration(j.duration()),
