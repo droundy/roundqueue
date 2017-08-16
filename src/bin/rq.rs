@@ -237,11 +237,11 @@ fn do_q() -> Result<()> {
 
 fn do_nodes() -> Result<()> {
     let status = roundqueue::Status::new()?;
-    println!("{:>12} {:>2}/{:<2} {:5}",
-             "NODE", "R", "C", "HYPER");
+    println!("{:>12} {:>2}/{:<2}({})",
+             "NODE", "R", "C", "H");
     for h in status.nodes.iter() {
         let running = status.running.iter().filter(|j| j.node == h.hostname).count();
-        println!("{:>12} {:>2}/{:<2} {:5}",
+        println!("{:>12} {:>2}/{:<2}({})",
                  h.hostname,
                  running,
                  h.physical_cores,
