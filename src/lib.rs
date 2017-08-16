@@ -43,6 +43,15 @@ impl RunningJob {
         }
     }
     fn completed(&self) -> Result<()> {
+        if let Some(ec) = self.exit_code {
+            if ec != 0 {
+                std::fs::rename(self.job.filepath(Path::new(RUNNING)),
+                                self.job.filepath(Path::new(FAILED)))?;
+                let mut x = self.clone();
+                x.completed = now();
+                return x.save(&Path::new(FAILED));
+            }
+        }
         std::fs::rename(self.job.filepath(Path::new(RUNNING)),
                         self.job.filepath(Path::new(COMPLETED)))?;
         let mut x = self.clone();
