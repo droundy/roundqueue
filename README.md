@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/droundy/roundqueue.svg?branch=master)](https://travis-ci.org/droundy/roundqueue)
+
 # Round queue
 
 The `rq` program implements a very simple queuing system.  This system

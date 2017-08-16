@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["droundy <roundyd@physics.oregonstate.edu>"]
 description = "Easy queueing system"
 
+[badges]
+travis-ci = { repository = "droundy/roundqueue", branch = "master" }
+
 [dependencies]
 
 serde = "1.0"
