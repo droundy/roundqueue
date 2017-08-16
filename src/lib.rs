@@ -158,7 +158,8 @@ const WAITING: &'static str = "waiting";
 const COMPLETED: &'static str = "completed";
 const CANCELED: &'static str = "canceled";
 const CANCELING: &'static str = "cancel";
-const POLLING_TIME: u64 = 60;
+const LIVE_TIME: u64 = 30*60;
+const POLLING_TIME: u64 = LIVE_TIME/2;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Status {
@@ -397,38 +398,47 @@ pub fn spawn_runner() -> Result<()> {
         Some(home.join(RQ).join(&host).with_extension("log")),
         Some(home.join(RQ).join(&host).with_extension("log")),
         unix_daemonize::ChdirMode::ChdirRoot).unwrap();
-    write_pid()?;
+    DaemonInfo::write()?;
     println!("==================\nRestarting runner process {}!",
              DaemonInfo::new().pid);
-    let (notify_tx, notify_rx) = std::sync::mpsc::channel();
     let mut old_status = Status::new()?;
-    let mut watcher =
-        notify::watcher(notify_tx.clone(),
-                        std::time::Duration::from_secs(1)).unwrap();
-    // We watch our own user's WAITING directory, since this is the
-    // only place new jobs can show up that we might want to run.
-    watcher.watch(home.join(RQ).join(WAITING),
-                  notify::RecursiveMode::NonRecursive).ok();
-    // We watch all user RUNNING directories, since in the future they
-    // may be running a job on this host, and when that job completes
-    // we may want to run a job of our own.  Even if they don't
-    // currently have a daemon running (and thus no jobs), they may
-    // start a daemon in the future, while we are still running!
-    for userdir in root_home.read_dir()? {
-        if let Ok(userdir) = userdir {
-            watcher.watch(userdir.path().join(RQ).join(RUNNING),
-                          notify::RecursiveMode::NonRecursive).ok();
-        }
-    }
+    let (notify_tx, notify_rx) = std::sync::mpsc::channel();
+    let notify_polling = notify_tx.clone();
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(std::time::Duration::from_secs(POLLING_TIME));
             // println!("Polling...");
-            notify_tx.send(notify::DebouncedEvent::Rescan).unwrap();
+            notify_polling.send(notify::DebouncedEvent::Rescan).unwrap();
         }
     });
     let threads = longthreads::Threads::new();
     loop {
+        // We re-watch the relevant directories each time through the
+        // loop, just in case they have been completely removed and
+        // replaced, or some other error has "interrupted" our watch.
+        // It's a bit wasteful, but rq is pretty wasteful, and relies
+        // on the fact that we have few users, few nodes, and few
+        // jobs.  This *should* ensure that we don't end up with
+        // daemons that are disconnected from reality and rely on our
+        // POLLING_TIME to run jobs.
+        let mut watcher =
+            notify::watcher(notify_tx.clone(),
+                            std::time::Duration::from_secs(1)).unwrap();
+        // We watch our own user's WAITING directory, since this is the
+        // only place new jobs can show up that we might want to run.
+        watcher.watch(home.join(RQ).join(WAITING),
+                      notify::RecursiveMode::NonRecursive).ok();
+        // We watch all user RUNNING directories, since in the future they
+        // may be running a job on this host, and when that job completes
+        // we may want to run a job of our own.  Even if they don't
+        // currently have a daemon running (and thus no jobs), they may
+        // start a daemon in the future, while we are still running!
+        for userdir in root_home.read_dir()? {
+            if let Ok(userdir) = userdir {
+                watcher.watch(userdir.path().join(RQ).join(RUNNING),
+                              notify::RecursiveMode::NonRecursive).ok();
+            }
+        }
         if let Ok(rr) = home.join(RQ).join(CANCELING).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
                 if let Ok(j) = RunningJob::read(&run.path()) {
@@ -441,12 +451,14 @@ pub fn spawn_runner() -> Result<()> {
         }
         // Now check whether we are in fact the real daemon running on
         // this node/home combination.
-        let daemon_running = DaemonInfo::read_my_own().unwrap();
+        let daemon_running = DaemonInfo::read_my_own()
+            .expect("Lock file unreadable, I should exit");
         let myself = DaemonInfo::new();
         if daemon_running.pid != myself.pid {
             println!("I {} have been replaced by {}.", myself.pid, daemon_running.pid);
             return Ok(()); // being replaced is not an error!
         }
+        DaemonInfo::write().unwrap();
         // Now check whether there is a job to be run...
         let status = Status::new().unwrap();
         let running = status.running.iter().filter(|j| &j.node == &host)
@@ -516,22 +528,27 @@ impl DaemonInfo {
         let mut f = std::fs::File::open(fname)?;
         let mut data = Vec::new();
         f.read_to_end(&mut data)?;
-        match serde_json::from_slice::<DaemonInfo>(&data) {
-            Ok(dinfo) => Ok(dinfo),
-            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        let dinfo = match serde_json::from_slice::<DaemonInfo>(&data) {
+            Ok(dinfo) => dinfo,
+            Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        };
+        let now = now();
+        if dinfo.restart_time < now && (now - dinfo.restart_time).as_secs() > LIVE_TIME {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other,
+                                           "Must have died long ago"));
         }
+        Ok(dinfo)
+    }
+    fn write() -> Result<()> {
+        let home = std::env::home_dir().unwrap();
+        let myself = DaemonInfo::new();
+        let mut f = std::fs::File::create(&home.join(RQ).join(&myself.hostname))?;
+        f.write_all(&serde_json::to_string(&myself).unwrap().as_bytes())
     }
 }
 
 fn read_pid(fname: &Path) -> Result<libc::pid_t> {
     Ok(DaemonInfo::read(fname)?.pid)
-}
-
-fn write_pid() -> Result<()> {
-    let home = std::env::home_dir().unwrap();
-    let host = hostname::get_hostname().unwrap();
-    let mut f = std::fs::File::create(&home.join(RQ).join(&host))?;
-    f.write_all(&serde_json::to_string(&DaemonInfo::new()).unwrap().as_bytes())
 }
 
 fn ensure_directories() -> Result<()> {
