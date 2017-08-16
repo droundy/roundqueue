@@ -222,6 +222,7 @@ fn do_q() -> Result<()> {
                  j.cores,
                  &j.jobname);
     }
+    println!("David's note to self: add completed/failed jobs here.");
     for j in status.running.iter() {
         println!("R {:>8} {:10} {:6} {:6}{:>2} {}",
                  homedir_to_username(&j.job.home_dir),
