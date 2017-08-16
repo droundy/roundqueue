@@ -27,6 +27,10 @@ pub struct RunningJob {
     pub started: Duration,
     pub node: String,
     pub pid: u32,
+    #[serde(default)]
+    pub completed: Duration,
+    #[serde(default)]
+    pub exit_code: Option<i32>,
 }
 
 impl RunningJob {
@@ -40,7 +44,10 @@ impl RunningJob {
     }
     fn completed(&self) -> Result<()> {
         std::fs::rename(self.job.filepath(Path::new(RUNNING)),
-                        self.job.filepath(Path::new(COMPLETED)))
+                        self.job.filepath(Path::new(COMPLETED)))?;
+        let mut x = self.clone();
+        x.completed = now();
+        x.save(&Path::new(COMPLETED))
     }
     pub fn cancel(&self) -> Result<()> {
         std::fs::rename(self.job.filepath(Path::new(RUNNING)),
@@ -48,7 +55,10 @@ impl RunningJob {
     }
     fn canceled(&self) -> Result<()> {
         std::fs::rename(self.job.filepath(Path::new(CANCELING)),
-                        self.job.filepath(Path::new(CANCELED)))
+                        self.job.filepath(Path::new(CANCELED)))?;
+        let mut x = self.clone();
+        x.completed = now();
+        x.save(&Path::new(CANCELED))
     }
     fn read(fname: &Path) -> Result<RunningJob> {
         let mut f = std::fs::File::open(fname)?;
@@ -148,6 +158,8 @@ impl Job {
             node: String::from("NONE"),
             pid: 0,
             started: now(),
+            completed: std::time::Duration::from_secs(0),
+            exit_code: None,
         };
         f.write_all(&serde_json::to_string(&rj).unwrap().as_bytes())?;
         std::fs::rename(&self.filepath(subdir).with_extension("tmp"),
@@ -168,6 +180,7 @@ impl Job {
 const RQ: &'static str = ".roundqueue";
 const RUNNING: &'static str = "running";
 const WAITING: &'static str = "waiting";
+const FAILED: &'static str = "failed";
 const COMPLETED: &'static str = "completed";
 const CANCELED: &'static str = "canceled";
 const CANCELING: &'static str = "cancel";
@@ -347,12 +360,14 @@ impl Status {
             },
         };
 
-        let runningjob = RunningJob {
+        let mut runningjob = RunningJob {
             started: now(),
             node: String::from(host),
             job: job,
             pid: child.id(),
-        };
+            completed: std::time::Duration::from_secs(0),
+            exit_code: None,
+         };
         if let Err(e) = runningjob.save(Path::new(RUNNING)) {
             println!("Yikes, unable to save job? {}", e);
             return;
@@ -369,6 +384,7 @@ impl Status {
                     {
                         writeln!(f, ":::::: Job {:?} exited with status {:?}",
                                  &runningjob.job.jobname, st.code()).ok();
+                        runningjob.exit_code = st.code();
                     }
                     println!("Done running {:?}: {}", runningjob.job.jobname, st);
                 }
@@ -556,6 +572,7 @@ fn ensure_directories() -> Result<()> {
     std::fs::create_dir_all(&home.join(RQ).join(WAITING))?;
     std::fs::create_dir_all(&home.join(RQ).join(RUNNING))?;
     std::fs::create_dir_all(&home.join(RQ).join(COMPLETED))?;
+    std::fs::create_dir_all(&home.join(RQ).join(FAILED))?;
     std::fs::create_dir_all(&home.join(RQ).join(CANCELED))?;
     std::fs::create_dir_all(&home.join(RQ).join(CANCELING))
 }
