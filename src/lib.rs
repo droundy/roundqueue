@@ -66,8 +66,10 @@ impl RunningJob {
         }
     }
     fn save(&self, subdir: &Path) -> Result<()> {
-        let mut f = std::fs::File::create(self.job.filepath(subdir))?;
-        f.write_all(&serde_json::to_string(self).unwrap().as_bytes())
+        let mut f = std::fs::File::create(self.job.filepath(subdir).with_extension("tmp"))?;
+        f.write_all(&serde_json::to_string(self).unwrap().as_bytes())?;
+        std::fs::rename(self.job.filepath(subdir).with_extension("tmp"),
+                        self.job.filepath(subdir))
     }
     pub fn kill(&self) {
         unsafe { libc::kill(self.pid as i32, libc::SIGTERM); }
@@ -125,8 +127,9 @@ impl Job {
         let mut f = std::fs::File::open(fname)?;
         let mut data = Vec::new();
         f.read_to_end(&mut data)?;
-        match serde_json::from_slice::<Job>(&data) {
-            Ok(job) => {
+        match serde_json::from_slice::<RunningJob>(&data) {
+            Ok(rj) => {
+                let job = rj.job;
                 if job.command.len() == 0 {
                     Err(std::io::Error::new(std::io::ErrorKind::Other, "empty cmd?"))
                 } else {
@@ -136,9 +139,19 @@ impl Job {
             Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
         }
     }
+    /// We save the `Job` as a `RunningJob`, so we can atomically make
+    /// it "running" later.
     fn save(&self, subdir: &Path) -> Result<()> {
-        let mut f = std::fs::File::create(self.filepath(subdir))?;
-        f.write_all(&serde_json::to_string(self).unwrap().as_bytes())
+        let mut f = std::fs::File::create(self.filepath(subdir).with_extension("tmp"))?;
+        let rj = RunningJob {
+            job: self.clone(),
+            node: String::from("NONE"),
+            pid: 0,
+            started: now(),
+        };
+        f.write_all(&serde_json::to_string(&rj).unwrap().as_bytes())?;
+        std::fs::rename(&self.filepath(subdir).with_extension("tmp"),
+                        &self.filepath(subdir))
     }
     fn change_status(&self, old_subdir: &Path, new_subdir: &Path) -> Result<()> {
         std::fs::rename(self.filepath(old_subdir), self.filepath(new_subdir))
@@ -287,6 +300,10 @@ impl Status {
             return;
         }
 
+        if let Err(e) = job.change_status(Path::new(WAITING), Path::new(RUNNING)) {
+            println!("Unable to change status of job {} ({})", &job.jobname, e);
+            return;
+        }
         println!("starting {:?}", &job.jobname);
         let mut f = match std::fs::OpenOptions::new()
             .create(true)
@@ -301,23 +318,6 @@ impl Status {
         if let Err(e) = writeln!(f, "::::: Starting job {:?} on {}", &job.jobname, &host) {
             println!("Error writing to output {:?}: {}",
                      job.directory.join(&job.output), e);
-            return;
-        }
-        if let Err(e) = job.change_status(Path::new(WAITING), Path::new(RUNNING)) {
-            println!("Unable to change status of job {} ({})", &job.jobname, e);
-            return;
-        }
-        // First save as a RunningJob, so that other daemons will
-        // recognize it as an actual running job when they count.  We
-        // will rewrite it later when we know the actual pid.
-        let runningjob = RunningJob {
-            started: now(),
-            node: String::from(host),
-            job: job.clone(),
-            pid: 0,
-        };
-        if let Err(e) = runningjob.save(Path::new(RUNNING)) {
-            println!("Yikes, unable to save job? {}", e);
             return;
         }
 
