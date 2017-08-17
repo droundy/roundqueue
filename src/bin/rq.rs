@@ -211,9 +211,9 @@ fn do_q() -> Result<()> {
     status.waiting.sort_by_key(|j| j.submitted);
     status.waiting.reverse();
     status.running.sort_by_key(|j| j.started);
-    status.running.reverse();
     let home = std::env::home_dir().unwrap();
     let mut most_recent_submission = std::time::Duration::from_secs(0);
+    let seconds = std::time::Duration::from_secs(5);
     println!("STATU USER {:10} {:7} {:7} {} {}",
              "NODE", "RTIME", "SUBMIT", "CPUS", "JOBNAME");
     for j in status.waiting.iter() {
@@ -229,12 +229,29 @@ fn do_q() -> Result<()> {
     }
     let mut failed = status.my_failed_jobs();
     let mut completed = status.my_completed_jobs();
+    failed.sort_by_key(|j| j.started);
+    completed.sort_by_key(|j| j.started);
     for j in status.running.iter().chain(&failed).chain(&completed) {
         if j.job.home_dir == home && j.job.submitted > most_recent_submission {
             most_recent_submission = j.job.submitted;
         }
     }
-    completed.sort_by_key(|j| j.started);
+    // Scoot backwards just a tad... the intent is that if users
+    // submit a bunch of jobs with a script, they should be able to
+    // see all of their completion afterwards, even if the first ones
+    // finish before the last are submitted.
+    for j in status.waiting.iter() {
+        if j.home_dir == home && j.submitted+seconds > most_recent_submission {
+            most_recent_submission = j.submitted;
+        }
+    }
+    status.waiting.reverse();
+    for j in status.running.iter().chain(&failed).chain(&completed) {
+        if j.job.home_dir == home && j.job.submitted+seconds > most_recent_submission {
+            most_recent_submission = j.job.submitted;
+        }
+    }
+    most_recent_submission -= std::time::Duration::from_secs(60);
     completed.reverse();
     for j in completed.iter().filter(|j| j.completed > most_recent_submission) {
         println!("C {:>8} {:10} {:7} {:7}{:>2} {}",
@@ -246,10 +263,9 @@ fn do_q() -> Result<()> {
                  &j.job.jobname,
         );
     }
-    failed.sort_by_key(|j| j.started);
     failed.reverse();
-    for j in completed.iter().filter(|j| j.completed > most_recent_submission) {
-        println!("C {:>8} {:10} {:7} {:7}{:>2} {}",
+    for j in failed.iter().filter(|j| j.completed > most_recent_submission) {
+        println!("F {:>8} {:10} {:7} {:7}{:>2} {}",
                  homedir_to_username(&j.job.home_dir),
                  &j.node,
                  pretty_duration(j.duration()),
@@ -258,6 +274,7 @@ fn do_q() -> Result<()> {
                  &j.job.jobname,
         );
     }
+    status.running.reverse();
     for j in status.running.iter() {
         println!("R {:>8} {:10} {:7} {:7}{:>2} {}",
                  homedir_to_username(&j.job.home_dir),
