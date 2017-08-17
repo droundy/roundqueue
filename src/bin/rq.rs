@@ -212,19 +212,54 @@ fn do_q() -> Result<()> {
     status.waiting.reverse();
     status.running.sort_by_key(|j| j.started);
     status.running.reverse();
-    println!("STATU USER {:10} {:6} {:6} {} {}",
+    let home = std::env::home_dir().unwrap();
+    let mut most_recent_submission = std::time::Duration::from_secs(0);
+    println!("STATU USER {:10} {:7} {:7} {} {}",
              "NODE", "RTIME", "SUBMIT", "CPUS", "JOBNAME");
     for j in status.waiting.iter() {
-        println!("W {:>8} {:10} {:6} {:6}{:>2} {}",
+        if j.home_dir == home && j.submitted > most_recent_submission {
+            most_recent_submission = j.submitted;
+        }
+        println!("W {:>8} {:10} {:7} {:7}{:>2} {}",
                  homedir_to_username(&j.home_dir),
                  "","",
                  pretty_duration(j.wait_duration()),
                  j.cores,
                  &j.jobname);
     }
-    println!("David's note to self: add completed/failed jobs here.");
+    let mut failed = status.my_failed_jobs();
+    let mut completed = status.my_completed_jobs();
+    for j in status.running.iter().chain(&failed).chain(&completed) {
+        if j.job.home_dir == home && j.job.submitted > most_recent_submission {
+            most_recent_submission = j.job.submitted;
+        }
+    }
+    completed.sort_by_key(|j| j.started);
+    completed.reverse();
+    for j in completed.iter().filter(|j| j.completed > most_recent_submission) {
+        println!("C {:>8} {:10} {:7} {:7}{:>2} {}",
+                 homedir_to_username(&j.job.home_dir),
+                 &j.node,
+                 pretty_duration(j.duration()),
+                 pretty_duration(j.job.wait_duration()),
+                 j.job.cores,
+                 &j.job.jobname,
+        );
+    }
+    failed.sort_by_key(|j| j.started);
+    failed.reverse();
+    for j in completed.iter().filter(|j| j.completed > most_recent_submission) {
+        println!("C {:>8} {:10} {:7} {:7}{:>2} {}",
+                 homedir_to_username(&j.job.home_dir),
+                 &j.node,
+                 pretty_duration(j.duration()),
+                 pretty_duration(j.job.wait_duration()),
+                 j.job.cores,
+                 &j.job.jobname,
+        );
+    }
     for j in status.running.iter() {
-        println!("R {:>8} {:10} {:6} {:6}{:>2} {}",
+        println!("R {:>8} {:10} {:7} {:7}{:>2} {}",
                  homedir_to_username(&j.job.home_dir),
                  &j.node,
                  pretty_duration(j.duration()),

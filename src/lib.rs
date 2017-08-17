@@ -272,6 +272,30 @@ impl Status {
         }
         Ok(status)
     }
+    pub fn my_completed_jobs(&self) -> Vec<RunningJob> {
+        let home = std::env::home_dir().unwrap();
+        let mut out = Vec::new();
+        if let Ok(rr) = home.join(".roundqueue").join(COMPLETED).read_dir() {
+            for run in rr.flat_map(|r| r.ok()) {
+                if let Ok(j) = RunningJob::read(&run.path()) {
+                    out.push(j);
+                }
+            }
+        }
+        out
+    }
+    pub fn my_failed_jobs(&self) -> Vec<RunningJob> {
+        let home = std::env::home_dir().unwrap();
+        let mut out = Vec::new();
+        if let Ok(rr) = home.join(".roundqueue").join(FAILED).read_dir() {
+            for run in rr.flat_map(|r| r.ok()) {
+                if let Ok(j) = RunningJob::read(&run.path()) {
+                    out.push(j);
+                }
+            }
+        }
+        out
+    }
     pub fn has_jobname(&self, jn: &str) -> bool {
         self.waiting.iter().any(|j| j.jobname == jn)
             || self.running.iter().any(|j| j.job.jobname == jn)
@@ -436,6 +460,24 @@ pub fn spawn_runner() -> Result<()> {
             notify_polling.send(notify::DebouncedEvent::Rescan).unwrap();
         }
     });
+    let mut watcher =
+        notify::watcher(notify_tx.clone(),
+                        std::time::Duration::from_secs(1)).unwrap();
+    // We watch our own user's WAITING directory, since this is the
+    // only place new jobs can show up that we might want to run.
+    watcher.watch(home.join(RQ).join(WAITING),
+                  notify::RecursiveMode::NonRecursive).ok();
+    // We watch all user RUNNING directories, since in the future they
+    // may be running a job on this host, and when that job completes
+    // we may want to run a job of our own.  Even if they don't
+    // currently have a daemon running (and thus no jobs), they may
+    // start a daemon in the future, while we are still running!
+    for userdir in root_home.read_dir()? {
+        if let Ok(userdir) = userdir {
+            watcher.watch(userdir.path().join(RQ).join(RUNNING),
+                          notify::RecursiveMode::NonRecursive).ok();
+        }
+    }
     let threads = longthreads::Threads::new();
     loop {
         // We re-watch the relevant directories each time through the
@@ -446,18 +488,8 @@ pub fn spawn_runner() -> Result<()> {
         // jobs.  This *should* ensure that we don't end up with
         // daemons that are disconnected from reality and rely on our
         // POLLING_TIME to run jobs.
-        let mut watcher =
-            notify::watcher(notify_tx.clone(),
-                            std::time::Duration::from_secs(1)).unwrap();
-        // We watch our own user's WAITING directory, since this is the
-        // only place new jobs can show up that we might want to run.
         watcher.watch(home.join(RQ).join(WAITING),
                       notify::RecursiveMode::NonRecursive).ok();
-        // We watch all user RUNNING directories, since in the future they
-        // may be running a job on this host, and when that job completes
-        // we may want to run a job of our own.  Even if they don't
-        // currently have a daemon running (and thus no jobs), they may
-        // start a daemon in the future, while we are still running!
         for userdir in root_home.read_dir()? {
             if let Ok(userdir) = userdir {
                 watcher.watch(userdir.path().join(RQ).join(RUNNING),
