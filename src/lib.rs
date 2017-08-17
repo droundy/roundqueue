@@ -525,20 +525,23 @@ pub fn spawn_runner() -> Result<()> {
                      running, cpus, status.waiting.len());
         }
         old_status = status.clone();
+        let total_cpus: usize = status.nodes.iter().map(|di| di.physical_cores).sum();
         if cpus > running && status.waiting.len() > 0 {
             status.run_next(&host, &home, &threads);
-        } else if hyperthreads > running && status.waiting.len() > 0 {
+        } else if hyperthreads > running && status.waiting.len() > 0
+            && status.running.len() >= total_cpus
+        {
             // We will now decide whether to run a job using a
             // hyperthread that shares a CPU core.  We do this in
             // cases where some users are using more than their fair
-            // share of the cluster, in order to ensure low latency
-            // for all users, at the cost of slowing down some jobs.
+            // share of the cluster, and all the cores are currently
+            // busy, in order to ensure low latency for all users, at
+            // the cost of slowing down some jobs.
             let mut user_running_jobs = HashMap::new();
             for hd in status.running.iter().map(|j| j.job.home_dir.clone()) {
                 let count = user_running_jobs.get(&hd).unwrap_or(&0)+1;
                 user_running_jobs.insert(hd, count);
             }
-            let total_cpus: usize = status.nodes.iter().map(|di| di.physical_cores).sum();
             let total_users = user_running_jobs.len();
             let cpus_per_user = total_cpus/total_users;
             let politely_waiting = status.waiting.iter()
