@@ -193,7 +193,7 @@ const FAILED: &'static str = "failed";
 const COMPLETED: &'static str = "completed";
 const CANCELED: &'static str = "canceled";
 const CANCELING: &'static str = "cancel";
-const LIVE_TIME: u64 = 30*60;
+const LIVE_TIME: u64 = 10*60;
 const POLLING_TIME: u64 = LIVE_TIME/2;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
