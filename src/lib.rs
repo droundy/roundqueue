@@ -309,6 +309,7 @@ impl Status {
         // run on this host because their user does not have a daemon
         // running on this host.
         let cpus = num_cpus::get_physical();
+        let myself = DaemonInfo::new();
         let waiting: Vec<_> =  self.waiting.iter()
             .filter(|j| self.homedirs_sharing_host.contains(&j.home_dir))
             .filter(|j| j.cores <= cpus)
@@ -342,28 +343,28 @@ impl Status {
         let running_cores: usize = self.running.iter().filter(|j| &j.node == &host)
             .map(|j| j.job.cores).sum();
         if cpus < running_cores + job.cores {
-            println!("Waiting for more cores for {}", job.jobname);
+            myself.log(format!("Waiting for more cores for {}", job.jobname));
             return;
         }
 
         if let Err(e) = job.change_status(Path::new(WAITING), Path::new(RUNNING)) {
-            println!("Unable to change status of job {} ({})", &job.jobname, e);
+            myself.log(format!("Unable to change status of job {} ({})", &job.jobname, e));
             return;
         }
-        println!("starting {:?}", &job.jobname);
+        myself.log(format!("starting {:?}", &job.jobname));
         let mut f = match std::fs::OpenOptions::new()
             .create(true)
             .append(true).open(job.directory.join(&job.output)) {
                 Ok(f) => f,
                 Err(e) => {
-                    println!("Error creating output {:?}: {}",
-                             job.directory.join(&job.output), e);
+                    myself.log(format!("Error creating output {:?}: {}",
+                                       job.directory.join(&job.output), e));
                     return;
                 },
             };
         if let Err(e) = writeln!(f, "::::: Starting job {:?} on {}", &job.jobname, &host) {
-            println!("Error writing to output {:?}: {}",
-                     job.directory.join(&job.output), e);
+            myself.log(format!("Error writing to output {:?}: {}",
+                               job.directory.join(&job.output), e));
             return;
         }
 
@@ -387,7 +388,7 @@ impl Status {
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                println!("Unable to spawn child: {}", e);
+                myself.log(format!("Unable to spawn child: {}", e));
                 // runningjob.failed().ok();
                 return;
             },
@@ -402,29 +403,31 @@ impl Status {
             exit_code: None,
          };
         if let Err(e) = runningjob.save(Path::new(RUNNING)) {
-            println!("Yikes, unable to save job? {}", e);
+            myself.log(format!("Yikes, unable to save job? {}", e));
             return;
         }
         // let logpath = Some(home_dir.join(RQ).join(&host).with_extension("log"));
         threads.spawn(move || {
             match child.wait() {
                 Err(e) => {
-                    println!("Error running {:?}: {}", runningjob.job.command, e);
+                    myself.log(format!("Error running {:?}: {}",
+                                       runningjob.job.command, e));
                 },
                 Ok(st) => {
                     if let Ok(mut f) = std::fs::OpenOptions::new().create(true)
                         .append(true).open(runningjob.job.directory.join(&runningjob.job.output))
                     {
-                        writeln!(f, ":::::: Job {:?} exited with status {:?}",
-                                 &runningjob.job.jobname, st.code()).ok();
+                        writeln!(f, ":::::: [{}] Job {:?} exited with status {:?}",
+                                 myself.pid, &runningjob.job.jobname, st.code()).ok();
                         runningjob.exit_code = st.code();
                     }
-                    println!("Done running {:?}: {}", runningjob.job.jobname, st);
+                    myself.log(format!("Done running {:?}: {}",
+                                       runningjob.job.jobname, st));
                 }
             }
             if let Err(e) = runningjob.completed() {
-                println!("Unable to change status of completed job {} ({})",
-                         &runningjob.job.jobname, e);
+                myself.log(format!("Unable to change status of completed job {} ({})",
+                                   &runningjob.job.jobname, e));
                 return;
             }
         });
@@ -448,8 +451,9 @@ pub fn spawn_runner() -> Result<()> {
         Some(home.join(RQ).join(&host).with_extension("log")),
         unix_daemonize::ChdirMode::ChdirRoot).unwrap();
     DaemonInfo::write()?;
-    println!("==================\nRestarting runner process {}!",
-             DaemonInfo::new().pid);
+    let myself = DaemonInfo::new();
+    myself.log(format!("==================\nRestarting runner process {}!",
+                       myself.pid));
     let mut old_status = Status::new()?;
     let (notify_tx, notify_rx) = std::sync::mpsc::channel();
     let notify_polling = notify_tx.clone();
@@ -502,7 +506,7 @@ pub fn spawn_runner() -> Result<()> {
                     j.kill();
                     j.canceled().ok();
                 } else {
-                    eprintln!("Error reading scancel {:?}", run.path());
+                    myself.log(format!("Error reading scancel {:?}", run.path()));
                 }
             }
         }
@@ -510,9 +514,9 @@ pub fn spawn_runner() -> Result<()> {
         // this node/home combination.
         let daemon_running = DaemonInfo::read_my_own()
             .expect("Lock file unreadable, I should exit");
-        let myself = DaemonInfo::new();
         if daemon_running.pid != myself.pid {
-            println!("I {} have been replaced by {}.", myself.pid, daemon_running.pid);
+            myself.log(format!("I {} have been replaced by {}.",
+                               myself.pid, daemon_running.pid));
             return Ok(()); // being replaced is not an error!
         }
         DaemonInfo::write().unwrap();
@@ -521,8 +525,8 @@ pub fn spawn_runner() -> Result<()> {
         let running = status.running.iter().filter(|j| &j.node == &host)
             .map(|j| j.job.cores).sum();
         if old_status != status {
-            println!("Currently using {}/{} cores, with {} jobs waiting.",
-                     running, cpus, status.waiting.len());
+            myself.log(format!("Currently using {}/{} cores, with {} jobs waiting.",
+                               running, cpus, status.waiting.len()));
         }
         old_status = status.clone();
         let total_cpus: usize = status.nodes.iter().map(|di| di.physical_cores).sum();
@@ -604,6 +608,9 @@ impl DaemonInfo {
         let myself = DaemonInfo::new();
         let mut f = std::fs::File::create(&home.join(RQ).join(&myself.hostname))?;
         f.write_all(&serde_json::to_string(&myself).unwrap().as_bytes())
+    }
+    fn log(&self, msg: String) {
+        eprintln!("{}: {}", self.pid, msg);
     }
 }
 
