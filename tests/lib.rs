@@ -254,3 +254,19 @@ fn polite_users_share_cpus() {
     rude.no_such_file("greeting");
     polite.file_exists("greeting");
 }
+
+#[test]
+fn zombie_jobs_disappear() {
+    let home = format!("tests/temp-homes/home-{}", line!());
+    let user = TempDir::new(&format!("{}/user", &home));
+    assert!(user.rq(&["daemon"]).status.success());
+    assert!(user.rq(&["run", "sleep", "100"]).status.success());
+
+    for j in user.0.join(".roundqueue/running").read_dir().unwrap().flat_map(|r| r.ok()) {
+        std::fs::copy(user.0.join(".roundqueue/running").join(j.path()),
+                      user.0.join(".roundqueue/running").join("bogus")).unwrap();
+    }
+
+    assert!(user.rq(&[]).status.success());
+    user.no_such_file(".roundqueue/running/bogus");
+}
