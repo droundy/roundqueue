@@ -62,6 +62,10 @@ impl RunningJob {
         std::fs::rename(self.job.filepath(Path::new(RUNNING)),
                         self.job.filepath(Path::new(CANCELING)))
     }
+    pub fn zombie(&self) -> Result<()> {
+        std::fs::rename(self.job.filepath(Path::new(RUNNING)),
+                        self.job.filepath(Path::new(ZOMBIE)))
+    }
     fn canceled(&self) -> Result<()> {
         std::fs::rename(self.job.filepath(Path::new(CANCELING)),
                         self.job.filepath(Path::new(CANCELED)))?;
@@ -190,6 +194,7 @@ const RQ: &'static str = ".roundqueue";
 const RUNNING: &'static str = "running";
 const WAITING: &'static str = "waiting";
 const FAILED: &'static str = "failed";
+const ZOMBIE: &'static str = "zombie";
 const COMPLETED: &'static str = "completed";
 const CANCELED: &'static str = "canceled";
 const CANCELING: &'static str = "cancel";
@@ -244,7 +249,12 @@ impl Status {
                 if let Ok(rr) = rqdir.join(RUNNING).read_dir() {
                     for run in rr.flat_map(|r| r.ok()) {
                         if let Ok(j) = RunningJob::read(&run.path()) {
-                            status.running.push(j);
+                            if host == j.node && !pid_exists(j.pid as i32) {
+                                println!("Job {} appears to have failed!", j.job.jobname);
+                                j.zombie().ok();
+                            } else {
+                                status.running.push(j);
+                            }
                         } else {
                             eprintln!("Error reading {:?}", run.path());
                         }
