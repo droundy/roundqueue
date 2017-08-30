@@ -229,8 +229,10 @@ fn do_q() -> Result<()> {
     }
     let mut failed = status.my_failed_jobs();
     let mut completed = status.my_completed_jobs();
+    let mut zombie = status.my_zombie_jobs();
     failed.sort_by_key(|j| j.started);
     completed.sort_by_key(|j| j.started);
+    zombie.sort_by_key(|j| j.started);
     for j in status.running.iter().chain(&failed).chain(&completed) {
         if j.job.home_dir == home && j.job.submitted > most_recent_submission {
             most_recent_submission = j.job.submitted;
@@ -266,6 +268,17 @@ fn do_q() -> Result<()> {
     failed.reverse();
     for j in failed.iter().filter(|j| j.completed > most_recent_submission) {
         println!("F {:>8} {:10} {:7} {:7}{:>2} {}",
+                 homedir_to_username(&j.job.home_dir),
+                 &j.node,
+                 pretty_duration(j.duration()),
+                 pretty_duration(j.job.wait_duration()),
+                 j.job.cores,
+                 &j.job.jobname,
+        );
+    }
+    zombie.reverse();
+    for j in zombie.iter().filter(|j| j.completed > most_recent_submission) {
+        println!("Z {:>8} {:10} {:7} {:7}{:>2} {}",
                  homedir_to_username(&j.job.home_dir),
                  &j.node,
                  pretty_duration(j.duration()),
