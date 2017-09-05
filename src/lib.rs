@@ -564,9 +564,16 @@ pub fn spawn_runner() -> Result<()> {
             // busy, in order to ensure low latency for all users, at
             // the cost of slowing down some jobs.
             let mut user_running_jobs = HashMap::new();
-            for hd in status.running.iter().map(|j| j.job.home_dir.clone()) {
-                let count = user_running_jobs.get(&hd).unwrap_or(&0)+1;
-                user_running_jobs.insert(hd, count);
+            for hd in status.running.iter()
+                // the following ignores any jobs running on nodes
+                // that are not currently up by our measure.  This
+                // prevents us from concluding that other users are
+                // oversubscribed based on a faulty total number of
+                // CPUs.
+                .filter(|&j| status.nodes.iter().any(|d| d.hostname == j.node))
+                .map(|j| j.job.home_dir.clone()) {
+                    let count = user_running_jobs.get(&hd).unwrap_or(&0)+1;
+                    user_running_jobs.insert(hd, count);
             }
             let total_users = user_running_jobs.len();
             let cpus_per_user = total_cpus/total_users;
