@@ -552,10 +552,13 @@ pub fn spawn_runner() -> Result<()> {
         }
         old_status = status.clone();
         let total_cpus: usize = status.nodes.iter().map(|di| di.physical_cores).sum();
+        let total_running: usize = status.running.iter()
+            .filter(|&j| status.nodes.iter().any(|d| d.hostname == j.node))
+            .map(|j| j.job.cores).sum();
         if cpus > running && status.waiting.len() > 0 {
             status.run_next(&host, &home, &threads);
         } else if hyperthreads > running && status.waiting.len() > 0
-            && status.running.len() >= total_cpus
+            && total_running >= total_cpus
         {
             // We will now decide whether to run a job using a
             // hyperthread that shares a CPU core.  We do this in
@@ -577,15 +580,19 @@ pub fn spawn_runner() -> Result<()> {
             }
             let total_users = user_running_jobs.len();
             let cpus_per_user = total_cpus/total_users;
-            let politely_waiting = status.waiting.iter()
-                .filter(|j| user_running_jobs[&j.home_dir] < cpus_per_user)
-                .count();
-            if politely_waiting > 0 {
-                let politely_running = status.running.iter()
-                    .filter(|j| user_running_jobs[&j.job.home_dir] < cpus_per_user)
+            if user_running_jobs[&home] < cpus_per_user {
+                // It is possible that we are next in line and should
+                // run using a hyperthread...
+                let politely_waiting = status.waiting.iter()
+                    .filter(|j| user_running_jobs[&j.home_dir] < cpus_per_user)
                     .count();
-                if cpus > politely_running {
-                    status.run_next(&host, &home, &threads);
+                if politely_waiting > 0 {
+                    let politely_running = status.running.iter()
+                        .filter(|j| user_running_jobs[&j.job.home_dir] < cpus_per_user)
+                        .count();
+                    if cpus > politely_running {
+                        status.run_next(&host, &home, &threads);
+                    }
                 }
             }
         }
