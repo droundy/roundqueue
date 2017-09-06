@@ -654,6 +654,7 @@ fn ensure_directories() -> Result<()> {
     std::fs::create_dir_all(&home.join(RQ).join(COMPLETED))?;
     std::fs::create_dir_all(&home.join(RQ).join(FAILED))?;
     std::fs::create_dir_all(&home.join(RQ).join(CANCELED))?;
+    std::fs::create_dir_all(&home.join(RQ).join(ZOMBIE))?;
     std::fs::create_dir_all(&home.join(RQ).join(CANCELING))
 }
 
