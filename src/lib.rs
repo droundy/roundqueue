@@ -669,8 +669,9 @@ fn now() -> Duration {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
 }
 
-/// Determine if a process exists with this pid.  The kill system call
-/// when given a zero signal just checks if the process exists.
+/// Determine if a process exists with this pid.  You can also kill
+/// with signal zero to check, but that fails if the process is owned
+/// by a different user.
 fn pid_exists(pid: libc::pid_t) -> bool {
-    unsafe { libc::kill(pid, 0) == 0 }
+    std::path::Path::new(&format!("/proc/{}", pid)).exists()
 }
