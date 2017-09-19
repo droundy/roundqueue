@@ -94,11 +94,22 @@ impl RunningJob {
         std::fs::rename(self.job.filepath(subdir).with_extension("tmp"),
                         self.job.filepath(subdir))
     }
-    pub fn kill(&self) {
+    pub fn kill(&self) -> Result<()> {
         unsafe { libc::kill(self.pid as i32, libc::SIGTERM); }
         std::thread::sleep(Duration::from_secs(2));
-        unsafe { libc::kill(self.pid as i32, libc::SIGKILL); }
-        self.completed().ok();
+        if pid_exists(self.pid as i32) {
+            let myself = DaemonInfo::new();
+            myself.log(format!("FAILED to kill {} (pid {}) with SIGTERM",
+                               self.job.jobname, self.pid));
+            unsafe { libc::kill(self.pid as i32, libc::SIGKILL); }
+            std::thread::sleep(Duration::from_secs(2));
+            if pid_exists(self.pid as i32) {
+                myself.log(format!("FAILED to kill {} (pid {}) with SIGKILL",
+                                   self.job.jobname, self.pid));
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, "bad kill?"))
+            }
+        }
+        self.completed()
     }
 }
 
@@ -525,8 +536,9 @@ pub fn spawn_runner() -> Result<()> {
         if let Ok(rr) = home.join(RQ).join(CANCELING).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
                 if let Ok(j) = RunningJob::read(&run.path()) {
-                    j.kill();
-                    j.canceled().ok();
+                    if j.kill().is_ok() {
+                        j.canceled().ok();
+                    }
                 } else {
                     myself.log(format!("Error reading scancel {:?}", run.path()));
                 }
