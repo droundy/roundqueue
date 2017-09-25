@@ -10,6 +10,15 @@ fn main() {
     let m = clap::App::new("rq")
         .version(crate_version!())
         .about(crate_description!())
+        .arg(clap::Arg::with_name("user")
+             .short("u")
+             .long("user")
+             .takes_value(true)
+             .value_name("USER")
+             .help("show only jobs of USER"))
+        .arg(clap::Arg::with_name("mine")
+             .long("mine")
+             .help("show only my own jobs"))
         .subcommand(
             clap::SubCommand::with_name("run")
                 .setting(clap::AppSettings::TrailingVarArg)
@@ -161,10 +170,26 @@ fn main() {
             do_nodes().unwrap();
         },
         ("q", _) => {
-            do_q().unwrap();
+            if m.is_present("mine") {
+                let home = std::env::home_dir().unwrap();
+                do_q(|j| {&j.home_dir == &home}).unwrap()
+            } else {
+                match m.value_of("user") {
+                    None => do_q(|_| { true }).unwrap(),
+                    Some(user) => do_q(|j| { homedir_to_username(&j.home_dir) == user }).unwrap(),
+                }
+            }
         },
         (_, None) => {
-            do_q().unwrap();
+            if m.is_present("mine") {
+                let home = std::env::home_dir().unwrap();
+                do_q(|j| {&j.home_dir == &home}).unwrap()
+            } else {
+                match m.value_of("user") {
+                    None => do_q(|_| { true }).unwrap(),
+                    Some(user) => do_q(|j| { homedir_to_username(&j.home_dir) == user }).unwrap(),
+                }
+            }
         }
         ("run", Some(m)) => {
             let mut command = Vec::new();
@@ -206,7 +231,8 @@ fn homedir_to_username(home: &std::path::Path) -> String {
     }
 }
 
-fn do_q() -> Result<()> {
+fn do_q<F>(want_to_see: F) -> Result<()>
+    where F: Fn(&roundqueue::Job) -> bool {
     let mut status = roundqueue::Status::new().unwrap();
     status.waiting.sort_by_key(|j| j.submitted);
     status.waiting.reverse();
@@ -220,12 +246,11 @@ fn do_q() -> Result<()> {
         if j.home_dir == home && j.submitted > most_recent_submission {
             most_recent_submission = j.submitted;
         }
-        println!("W {:>8} {:10} {:7} {:7}{:>2} {}",
-                 homedir_to_username(&j.home_dir),
-                 "","",
-                 pretty_duration(j.wait_duration()),
-                 j.cores,
-                 &j.jobname);
+        let juser = homedir_to_username(&j.home_dir);
+        if want_to_see(&j) {
+            println!("W {:>8} {:10} {:7} {:7}{:>2} {}",
+                     juser,"","",pretty_duration(j.wait_duration()),j.cores,&j.jobname);
+        }
     }
     let mut failed = status.my_failed_jobs();
     let mut completed = status.my_completed_jobs();
@@ -256,47 +281,55 @@ fn do_q() -> Result<()> {
     most_recent_submission -= std::time::Duration::from_secs(60);
     completed.reverse();
     for j in completed.iter().filter(|j| j.completed > most_recent_submission) {
-        println!("C {:>8} {:10} {:7} {:7}{:>2} {}",
-                 homedir_to_username(&j.job.home_dir),
-                 &j.node,
-                 pretty_duration(j.duration()),
-                 pretty_duration(j.job.wait_duration()),
-                 j.job.cores,
-                 &j.job.jobname,
-        );
+        if want_to_see(&j.job) {
+            println!("C {:>8} {:10} {:7} {:7}{:>2} {}",
+                     homedir_to_username(&j.job.home_dir),
+                     &j.node,
+                     pretty_duration(j.duration()),
+                     pretty_duration(j.job.wait_duration()),
+                     j.job.cores,
+                     &j.job.jobname,
+            );
+        }
     }
     failed.reverse();
     for j in failed.iter().filter(|j| j.completed > most_recent_submission) {
-        println!("F {:>8} {:10} {:7} {:7}{:>2} {}",
-                 homedir_to_username(&j.job.home_dir),
-                 &j.node,
-                 pretty_duration(j.duration()),
-                 pretty_duration(j.job.wait_duration()),
-                 j.job.cores,
-                 &j.job.jobname,
-        );
+        if want_to_see(&j.job) {
+            println!("F {:>8} {:10} {:7} {:7}{:>2} {}",
+                     homedir_to_username(&j.job.home_dir),
+                     &j.node,
+                     pretty_duration(j.duration()),
+                     pretty_duration(j.job.wait_duration()),
+                     j.job.cores,
+                     &j.job.jobname,
+            );
+        }
     }
     zombie.reverse();
     for j in zombie.iter().filter(|j| j.completed > most_recent_submission) {
-        println!("Z {:>8} {:10} {:7} {:7}{:>2} {}",
-                 homedir_to_username(&j.job.home_dir),
-                 &j.node,
-                 pretty_duration(j.duration()),
-                 pretty_duration(j.job.wait_duration()),
-                 j.job.cores,
-                 &j.job.jobname,
-        );
+        if want_to_see(&j.job) {
+            println!("Z {:>8} {:10} {:7} {:7}{:>2} {}",
+                     homedir_to_username(&j.job.home_dir),
+                     &j.node,
+                     pretty_duration(j.duration()),
+                     pretty_duration(j.job.wait_duration()),
+                     j.job.cores,
+                     &j.job.jobname,
+            );
+        }
     }
     status.running.reverse();
     for j in status.running.iter() {
-        println!("R {:>8} {:10} {:7} {:7}{:>2} {}",
-                 homedir_to_username(&j.job.home_dir),
-                 &j.node,
-                 pretty_duration(j.duration()),
-                 pretty_duration(j.job.wait_duration()),
-                 j.job.cores,
-                 &j.job.jobname,
-        );
+        if want_to_see(&j.job) {
+            println!("R {:>8} {:10} {:7} {:7}{:>2} {}",
+                     homedir_to_username(&j.job.home_dir),
+                     &j.node,
+                     pretty_duration(j.duration()),
+                     pretty_duration(j.job.wait_duration()),
+                     j.job.cores,
+                     &j.job.jobname,
+            );
+        }
     }
     Ok(())
 }
