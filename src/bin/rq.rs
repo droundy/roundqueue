@@ -278,7 +278,9 @@ fn do_q<F>(want_to_see: F) -> Result<()>
             most_recent_submission = j.job.submitted;
         }
     }
-    most_recent_submission -= std::time::Duration::from_secs(60);
+    if most_recent_submission > std::time::Duration::from_secs(60) {
+        most_recent_submission -= std::time::Duration::from_secs(60);
+    }
     completed.reverse();
     for j in completed.iter().filter(|j| j.completed > most_recent_submission) {
         if want_to_see(&j.job) {
