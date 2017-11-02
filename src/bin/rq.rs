@@ -340,14 +340,27 @@ fn do_nodes() -> Result<()> {
     let status = roundqueue::Status::new()?;
     println!("{:>12} {:>2}/{:<2}({})",
              "NODE", "R", "C", "H");
+    let mut total_running = 0;
+    let mut total_physical = 0;
+    let mut total_logical = 0;
     for h in status.nodes.iter() {
         let running = status.running.iter().filter(|j| j.node == h.hostname).count();
+        total_running += running;
+        total_physical += h.physical_cores;
+        total_logical += h.logical_cpus;
         println!("{:>12} {:>2}/{:<2}({})",
                  h.hostname,
                  running,
                  h.physical_cores,
                  h.logical_cpus);
     }
+    println!("{:>12} {:>2} {:<2} {}",
+             "--------", "--", "--", "--");
+    println!("{:>12} {:>2}/{:<2}({})",
+             "TOTAL",
+             total_running,
+             total_physical,
+             total_logical);
     Ok(())
 }
 
