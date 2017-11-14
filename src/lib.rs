@@ -329,6 +329,25 @@ impl Status {
         }
         out
     }
+    pub fn my_cancelled_jobs(&self) -> Vec<RunningJob> {
+        let home = std::env::home_dir().unwrap();
+        let mut out = Vec::new();
+        if let Ok(rr) = home.join(".roundqueue").join(CANCELED).read_dir() {
+            for run in rr.flat_map(|r| r.ok()) {
+                if let Ok(j) = RunningJob::read(&run.path()) {
+                    out.push(j);
+                }
+            }
+        }
+        if let Ok(rr) = home.join(".roundqueue").join(CANCELING).read_dir() {
+            for run in rr.flat_map(|r| r.ok()) {
+                if let Ok(j) = RunningJob::read(&run.path()) {
+                    out.push(j);
+                }
+            }
+        }
+        out
+    }
     pub fn has_jobname(&self, jn: &str) -> bool {
         self.waiting.iter().any(|j| j.jobname == jn)
             || self.running.iter().any(|j| j.job.jobname == jn)

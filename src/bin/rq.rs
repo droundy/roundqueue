@@ -254,11 +254,13 @@ fn do_q<F>(want_to_see: F) -> Result<()>
     }
     let mut failed = status.my_failed_jobs();
     let mut completed = status.my_completed_jobs();
+    let mut canceled = status.my_cancelled_jobs();
     let mut zombie = status.my_zombie_jobs();
     failed.sort_by_key(|j| j.started);
     completed.sort_by_key(|j| j.started);
     zombie.sort_by_key(|j| j.started);
-    for j in status.running.iter().chain(&failed).chain(&completed) {
+    canceled.sort_by_key(|j| j.started);
+    for j in status.running.iter().chain(&failed).chain(&completed).chain(&canceled) {
         if j.job.home_dir == home && j.job.submitted > most_recent_submission {
             most_recent_submission = j.job.submitted;
         }
