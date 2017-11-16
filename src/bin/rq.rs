@@ -204,7 +204,14 @@ fn main() {
                 std::path::PathBuf::from(m.value_of("output").unwrap())
             } else {
                 if m.value_of("output").unwrap() == DEFAULT_OUTPUT {
-                    std::path::PathBuf::from(&jn).with_extension("out")
+                    // handle properly job names that contain "."
+                    let p = std::path::PathBuf::from(&jn);
+                    let mut ext = std::ffi::OsString::from("out");
+                    if let Some(extension) = p.extension() {
+                        ext = std::ffi::OsString::from(extension);
+                        ext.push(".out");
+                    }
+                    p.with_extension(ext)
                 } else {
                     std::path::PathBuf::from(m.value_of("output").unwrap())
                 }
