@@ -60,11 +60,17 @@ impl RunningJob {
     }
     pub fn cancel(&self) -> Result<()> {
         std::fs::rename(self.job.filepath(Path::new(RUNNING)),
-                        self.job.filepath(Path::new(CANCELING)))
+                        self.job.filepath(Path::new(CANCELING)))?;
+        let mut x = self.clone();
+        x.completed = now();
+        x.save(&Path::new(CANCELING))
     }
     pub fn zombie(&self) -> Result<()> {
         std::fs::rename(self.job.filepath(Path::new(RUNNING)),
-                        self.job.filepath(Path::new(ZOMBIE)))
+                        self.job.filepath(Path::new(ZOMBIE)))?;
+        let mut x = self.clone();
+        x.completed = now();
+        x.save(&Path::new(ZOMBIE))
     }
     fn canceled(&self) -> Result<()> {
         std::fs::rename(self.job.filepath(Path::new(CANCELING)),
