@@ -86,6 +86,11 @@ fn main() {
                 .about("show node information")
         )
         .subcommand(
+            clap::SubCommand::with_name("users")
+                .version(crate_version!())
+                .about("show information about users")
+        )
+        .subcommand(
             clap::SubCommand::with_name("q")
                 .version(crate_version!())
                 .about("show the queue")
@@ -168,6 +173,9 @@ fn main() {
         },
         ("nodes", _) => {
             do_nodes().unwrap();
+        },
+        ("users", _) => {
+            do_users().unwrap();
         },
         ("q", _) => {
             if m.is_present("mine") {
@@ -370,6 +378,49 @@ fn do_nodes() -> Result<()> {
              total_running,
              total_physical,
              total_logical);
+    Ok(())
+}
+
+fn do_users() -> Result<()> {
+    let status = roundqueue::Status::new()?;
+    println!("{:>12} {:>2}/{:<2}({})",
+             "USER", "R", "C", "W");
+    let mut total_running = 0;
+    let mut total_cpus = 0;
+    for h in status.nodes.iter() {
+        total_cpus += h.physical_cores;
+    }
+    let mut total_waiting = 0;
+    let mut users: Vec<String> = Vec::new();
+    for j in status.running.iter() {
+        let u = homedir_to_username(&j.job.home_dir);
+        if !users.contains(&u) {
+            users.push(u);
+        }
+    }
+    for j in status.waiting.iter() {
+        let u = homedir_to_username(&j.home_dir);
+        if !users.contains(&u) {
+            users.push(u);
+        }
+    }
+    for u in users {
+        let running = status.running.iter()
+            .filter(|j| homedir_to_username(&j.job.home_dir) == u).count();
+        let waiting = status.waiting.iter()
+            .filter(|j| homedir_to_username(&j.home_dir) == u).count();
+        total_running += running;
+        total_waiting += waiting;
+        println!("{:>12} {:>2}/{:<2}({})",
+                 u, running, total_cpus, waiting);
+    }
+    println!("{:>12} {:>2} {:<2} {}",
+             "--------", "--", "--", "--");
+    println!("{:>12} {:>2}/{:<2}({})",
+             "TOTAL",
+             total_running,
+             total_cpus,
+             total_waiting);
     Ok(())
 }
 
