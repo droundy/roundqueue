@@ -306,6 +306,18 @@ impl Status {
         }
         Ok(status)
     }
+    pub fn my_waiting_jobs() -> Vec<Job> {
+        let home = std::env::home_dir().unwrap();
+        let mut out = Vec::new();
+        if let Ok(rr) = home.join(".roundqueue").join(WAITING).read_dir() {
+            for run in rr.flat_map(|r| r.ok()) {
+                if let Ok(j) = Job::read(&run.path()) {
+                    out.push(j);
+                }
+            }
+        }
+        out
+    }
     pub fn my_completed_jobs(&self) -> Vec<RunningJob> {
         let home = std::env::home_dir().unwrap();
         let mut out = Vec::new();
@@ -586,7 +598,15 @@ pub fn spawn_runner() -> Result<()> {
             return Ok(()); // being replaced is not an error!
         }
         DaemonInfo::write().unwrap();
-        // Now check whether there is a job to be run...
+        // Now check whether there is a job to be run... we begin by
+        // checking if we have any waiting jobs of our own.  If not,
+        // then we can quit now, because we know that we need not run
+        // anything.
+        if Status::my_waiting_jobs().len() == 0 {
+            continue;
+        }
+        // We have a job we would like to run, so let us now find out
+        // if it is runnable!
         let status = Status::new().unwrap();
         let running = status.running.iter().filter(|j| &j.node == &host)
             .map(|j| j.job.cores).sum();
