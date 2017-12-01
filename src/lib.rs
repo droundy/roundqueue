@@ -70,7 +70,8 @@ impl RunningJob {
                         self.job.filepath(Path::new(CANCELING)))?;
         let mut x = self.clone();
         x.completed = now();
-        x.save(&Path::new(CANCELING))
+        x.save(&Path::new(CANCELING))?;
+        self.kill()
     }
     pub fn zombie(&self) -> Result<()> {
         std::fs::rename(self.job.filepath(Path::new(RUNNING)),
@@ -108,6 +109,12 @@ impl RunningJob {
                         self.job.filepath(subdir))
     }
     pub fn kill(&self) -> Result<()> {
+        let host = hostname::get_hostname().unwrap();
+        if self.node != host {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other,
+                                           format!("cannot kill job on {} from host {}",
+                                                   &self.node, &host)));
+        }
         unsafe { libc::kill(self.pid as i32, libc::SIGTERM); }
         std::thread::sleep(Duration::from_secs(2));
         if pid_exists(self.pid as i32) {
@@ -122,7 +129,7 @@ impl RunningJob {
                 return Err(std::io::Error::new(std::io::ErrorKind::Other, "bad kill?"))
             }
         }
-        self.completed()
+        self.canceled()
     }
 }
 
@@ -585,9 +592,7 @@ pub fn spawn_runner() -> Result<()> {
         if let Ok(rr) = home.join(RQ).join(CANCELING).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
                 if let Ok(j) = RunningJob::read(&run.path()) {
-                    if j.kill().is_ok() {
-                        j.canceled().ok();
-                    }
+                    j.kill().ok();
                 } else {
                     myself.log(format!("Error reading scancel {:?}", run.path()));
                 }
