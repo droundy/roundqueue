@@ -354,7 +354,7 @@ impl Status {
         }
         out
     }
-    pub fn my_cancelled_jobs(&self) -> Vec<RunningJob> {
+    pub fn my_canceled_jobs(&self) -> Vec<RunningJob> {
         let home = std::env::home_dir().unwrap();
         let mut out = Vec::new();
         if let Ok(rr) = home.join(".roundqueue").join(CANCELED).read_dir() {
@@ -364,6 +364,11 @@ impl Status {
                 }
             }
         }
+        out
+    }
+    pub fn my_canceling_jobs(&self) -> Vec<RunningJob> {
+        let home = std::env::home_dir().unwrap();
+        let mut out = Vec::new();
         if let Ok(rr) = home.join(".roundqueue").join(CANCELING).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
                 if let Ok(j) = RunningJob::read(&run.path()) {

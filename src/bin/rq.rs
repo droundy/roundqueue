@@ -269,13 +269,15 @@ fn do_q<F>(want_to_see: F) -> Result<()>
     }
     let mut failed = status.my_failed_jobs();
     let mut completed = status.my_completed_jobs();
-    let mut canceled = status.my_cancelled_jobs();
+    let mut canceled = status.my_canceled_jobs();
     let mut zombie = status.my_zombie_jobs();
+    let mut canceling = status.my_canceling_jobs();
     failed.sort_by_key(|j| j.started);
     completed.sort_by_key(|j| j.started);
     zombie.sort_by_key(|j| j.started);
     canceled.sort_by_key(|j| j.started);
-    for j in status.running.iter().chain(&failed).chain(&completed).chain(&canceled) {
+    canceling.sort_by_key(|j| j.started);
+    for j in status.running.iter().chain(&failed).chain(&completed).chain(&canceled).chain(&canceling) {
         if j.job.home_dir == home && j.job.submitted > most_recent_submission {
             most_recent_submission = j.job.submitted;
         }
@@ -302,6 +304,32 @@ fn do_q<F>(want_to_see: F) -> Result<()>
     for j in completed.iter().filter(|j| j.completed > most_recent_submission) {
         if want_to_see(&j.job) {
             println!("C {:>8} {:10} {:7} {:7}{:>2} {}",
+                     homedir_to_username(&j.job.home_dir),
+                     &j.node,
+                     pretty_duration(j.duration()),
+                     pretty_duration(j.job.wait_duration()),
+                     j.job.cores,
+                     &j.job.jobname,
+            );
+        }
+    }
+    canceled.reverse();
+    for j in canceled.iter().filter(|j| j.completed >= most_recent_submission) {
+        if want_to_see(&j.job) {
+            println!("X {:>8} {:10} {:7} {:7}{:>2} {}",
+                     homedir_to_username(&j.job.home_dir),
+                     &j.node,
+                     pretty_duration(j.duration()),
+                     pretty_duration(j.job.wait_duration()),
+                     j.job.cores,
+                     &j.job.jobname,
+            );
+        }
+    }
+    canceling.reverse();
+    for j in canceling.iter().filter(|j| j.completed >= most_recent_submission) {
+        if want_to_see(&j.job) {
+            println!("RX{:>8} {:10} {:7} {:7}{:>2} {}",
                      homedir_to_username(&j.job.home_dir),
                      &j.node,
                      pretty_duration(j.duration()),
