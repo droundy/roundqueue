@@ -223,7 +223,7 @@ const COMPLETED: &'static str = "completed";
 const CANCELED: &'static str = "canceled";
 const CANCELING: &'static str = "cancel";
 const LIVE_TIME: u64 = 10*60;
-const POLLING_TIME: u64 = LIVE_TIME/5;
+const POLLING_TIME: u64 = LIVE_TIME/20;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Status {
