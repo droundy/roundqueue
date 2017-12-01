@@ -52,8 +52,15 @@ impl RunningJob {
                 return x.save(&Path::new(FAILED));
             }
         }
-        std::fs::rename(self.job.filepath(Path::new(RUNNING)),
-                        self.job.filepath(Path::new(COMPLETED)))?;
+        // First try renaming from CANCELING, just in case this job
+        // has been cancelled right before it completed.
+        if let Err(_) = std::fs::rename(self.job.filepath(Path::new(CANCELING)),
+                                        self.job.filepath(Path::new(COMPLETED))) {
+            // It looks like it wasn't cancelled, so let's rename from
+            // RUNNING.
+            std::fs::rename(self.job.filepath(Path::new(RUNNING)),
+                            self.job.filepath(Path::new(COMPLETED)))?;
+        }
         let mut x = self.clone();
         x.completed = now();
         x.save(&Path::new(COMPLETED))
