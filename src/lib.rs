@@ -583,12 +583,6 @@ pub fn spawn_runner() -> Result<()> {
         // POLLING_TIME to run jobs.
         watcher.watch(home.join(RQ).join(WAITING),
                       notify::RecursiveMode::NonRecursive).ok();
-        for userdir in root_home.read_dir()? {
-            if let Ok(userdir) = userdir {
-                watcher.watch(userdir.path().join(RQ).join(RUNNING),
-                              notify::RecursiveMode::NonRecursive).ok();
-            }
-        }
         if let Ok(rr) = home.join(RQ).join(CANCELING).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
                 if let Ok(j) = RunningJob::read(&run.path()) {
@@ -613,7 +607,16 @@ pub fn spawn_runner() -> Result<()> {
         // then we can quit now, because we know that we need not run
         // anything.
         if Status::my_waiting_jobs().len() == 0 {
+            watcher.watch(home.join(RQ).join(CANCELING),
+                          notify::RecursiveMode::NonRecursive).ok();
+            notify_rx.recv().unwrap();
             continue;
+        }
+        for userdir in root_home.read_dir()? {
+            if let Ok(userdir) = userdir {
+                watcher.watch(userdir.path().join(RQ).join(RUNNING),
+                              notify::RecursiveMode::NonRecursive).ok();
+            }
         }
         // We have a job we would like to run, so let us now find out
         // if it is runnable!
