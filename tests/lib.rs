@@ -69,6 +69,34 @@ impl TempDir {
         assert_eq!(std::str::from_utf8(actual_contents.as_slice()),
                    std::str::from_utf8(&contents));
     }
+    fn file_contains(&self, p: &str, pattern: &[u8]) {
+        let absp = self.0.join(p);
+        let mut f = std::fs::File::open(absp).unwrap();
+        let mut contents = Vec::new();
+        f.read_to_end(&mut contents).unwrap();
+        for i in 0..contents.len()-pattern.len() {
+            if &contents[i..i+pattern.len()] == pattern {
+                println!("found {:?}", String::from_utf8_lossy(pattern));
+                return;
+            }
+        }
+        println!("no such pattern: {:?}", String::from_utf8_lossy(pattern));
+        println!("in file: {:?}", std::str::from_utf8(&contents));
+        panic!("could not find pattern");
+    }
+    fn file_does_not_contain(&self, p: &str, pattern: &[u8]) {
+        let absp = self.0.join(p);
+        let mut f = std::fs::File::open(absp).unwrap();
+        let mut contents = Vec::new();
+        f.read_to_end(&mut contents).unwrap();
+        for i in 0..contents.len()-pattern.len() {
+            if &contents[i..i+pattern.len()] == pattern {
+                panic!("found unwanted {:?}", String::from_utf8_lossy(pattern));
+            }
+        }
+        println!("no unwanted pattern: {:?}", String::from_utf8_lossy(pattern));
+        println!("in file: {:?}", std::str::from_utf8(&contents));
+    }
     fn no_such_file(&self, p: &str) {
         let absp = self.0.join(p);
         assert!(!absp.exists());
@@ -118,6 +146,22 @@ fn rq_jobname_gives_default_output() {
     let out = tempdir.rq(&[]);
     assert!(out.status.success());
     tempdir.file_exists("goodname.out");
+}
+
+#[test]
+fn rq_max_output_enforced() {
+    let tempdir = TempDir::new(&format!("tests/temp-homes/home-{}/user", line!()));
+    let out = tempdir.rq(&["daemon"]);
+    assert!(out.status.success());
+    let out = tempdir.rq(&["run", "-J", "goodname", "--max-output=1e-6", "sh", "-c",
+                           "echo hello world && sleep 3 && echo goodbye world"]);
+    assert!(out.status.success());
+    std::thread::sleep(std::time::Duration::from_secs(5));
+    let out = tempdir.rq(&[]);
+    assert!(out.status.success());
+    tempdir.file_exists("goodname.out");
+    tempdir.file_contains("goodname.out", b"created too large an output");
+    tempdir.file_does_not_contain("goodname.out", b"goodbye world\n");
 }
 
 #[test]

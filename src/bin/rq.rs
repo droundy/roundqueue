@@ -32,6 +32,13 @@ fn main() {
                      .default_value("1")
                      .hide_default_value(true)
                      .help("the number of cores the job requires [default: 1]"))
+                .arg(clap::Arg::with_name("max-output")
+                     .long("max-output")
+                     .takes_value(true)
+                     .value_name("MB")
+                     .default_value("1")
+                     .hide_default_value(true)
+                     .help("the maximum size of the output file [default: 1MB]"))
                 .arg(clap::Arg::with_name("jobname")
                      .short("J")
                      .long("job-name")
@@ -229,8 +236,11 @@ fn main() {
                 std::process::exit(1);
             }
             let ncores = value_t!(m, "cores", usize).unwrap_or_else(|e| e.exit());
+            let max_output_mb = value_t!(m, "max-output", f64).unwrap_or_else(|e| e.exit());
+            let max_output = (max_output_mb*((1<<20) as f64)) as u64;
             println!("submitted {:?}", &jn);
-            roundqueue::Job::new(command, jn, output, ncores).unwrap().submit().unwrap()
+            roundqueue::Job::new(command, jn, output,
+                                 ncores, max_output).unwrap().submit().unwrap()
         },
         (x, _) => {
             eprintln!("Invalid subcommand {}!", x);

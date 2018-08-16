@@ -8,6 +8,7 @@ extern crate unix_daemonize;
 extern crate num_cpus;
 extern crate notify;
 extern crate libc;
+extern crate shared_child;
 
 mod longthreads;
 
@@ -20,6 +21,7 @@ use std::collections::{HashSet,HashMap};
 
 use std::os::unix::io::{FromRawFd,IntoRawFd};
 use std::os::unix::process::CommandExt;
+use std::sync::{Arc, Mutex};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct RunningJob {
@@ -143,10 +145,12 @@ pub struct Job {
     pub submitted: Duration,
     #[serde(default)]
     pub cores: usize,
+    #[serde(default)]
+    pub max_output: Option<u64>,
 }
 
 impl Job {
-    pub fn new(cmd: Vec<String>, jobname: String, output: PathBuf, cores: usize)
+    pub fn new(cmd: Vec<String>, jobname: String, output: PathBuf, cores: usize, max_output: u64)
                -> Result<Job> {
         Ok(Job {
             directory: std::env::current_dir()?,
@@ -156,6 +160,7 @@ impl Job {
             output: output,
             submitted: now(),
             cores: cores,
+            max_output: Some(max_output),
         })
     }
     pub fn cancel(&self) -> Result<()> {
@@ -229,8 +234,9 @@ const ZOMBIE: &'static str = "zombie";
 const COMPLETED: &'static str = "completed";
 const CANCELED: &'static str = "canceled";
 const CANCELING: &'static str = "cancel";
-const LIVE_TIME: u64 = 10*60;
-const POLLING_TIME: u64 = LIVE_TIME/20;
+const SHORT_TIME: std::time::Duration = std::time::Duration::from_secs(1);
+const LIVE_TIME: std::time::Duration = std::time::Duration::from_secs(10*60);
+const POLLING_TIME: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Status {
@@ -474,7 +480,7 @@ impl Status {
                 // make child processes always be maximally nice!
                 unsafe { libc::nice(19); Ok(()) }
         });
-        let mut child = match cmd.spawn() {
+        let child = match shared_child::SharedChild::spawn(&mut cmd) {
             Ok(c) => c,
             Err(e) => {
                 myself.log(format!("Unable to spawn child: {}", e));
@@ -495,7 +501,50 @@ impl Status {
             myself.log(format!("Yikes, unable to save job? {}", e));
             return;
         }
-        // let logpath = Some(home_dir.join(RQ).join(&host).with_extension("log"));
+        let child = Arc::new(child);
+        let child_to_kill = child.clone();
+        // Now we create the thread that waits to see if the child
+        // process exits, and if so marks it as completed.
+        let all_done = Arc::new(Mutex::new(false));
+        let all_done_setter = all_done.clone();
+        let output_path = runningjob.job.directory.join(&runningjob.job.output);
+        if let Some(max_output) = runningjob.job.max_output {
+            // This thread will periodically check to see the size of
+            // the output file, and if it is too large it will kill the
+            // child.  This is intended to reduce the danger of the disk
+            // being entirely filled with data written to stdout (which
+            // should normally *not* be large, but frequently is due to a
+            // printf in a longrunning process).
+            threads.spawn(move || {
+                let output_path = &output_path;
+                loop {
+                    // We wait a very short while before checking if
+                    // the process is both still running *and* has
+                    // exceeded its maximum output size in the log
+                    // file.  This is short to make testing less
+                    // painful.
+                    std::thread::sleep(SHORT_TIME);
+                    if *all_done.lock().unwrap() {
+                        return;
+                    }
+                    if let Ok(md) = output_path.metadata() {
+                        if md.len() > max_output {
+                            child_to_kill.kill().ok();
+                            if let Ok(mut f) = std::fs::OpenOptions::new().create(true)
+                                .append(true).open(output_path)
+                            {
+                                writeln!(f, ":::::: [{}] Job created too large an output file! {} > {}",
+                                         child_to_kill.id(), md.len(), max_output).ok();
+                            }
+                        }
+                    }
+                    // We wait a much longer time between checks,
+                    // since we don't want to spend much time polling
+                    // the output file size.
+                    std::thread::sleep(LIVE_TIME);
+                }
+            });
+        }
         threads.spawn(move || {
             match child.wait() {
                 Err(e) => {
@@ -514,6 +563,7 @@ impl Status {
                                        runningjob.job.jobname, st));
                 }
             }
+            *all_done_setter.lock().unwrap() = true;
             if let Err(e) = runningjob.completed() {
                 myself.log(format!("Unable to change status of completed job {} ({})",
                                    &runningjob.job.jobname, e));
@@ -548,7 +598,7 @@ pub fn spawn_runner() -> Result<()> {
     let notify_polling = notify_tx.clone();
     std::thread::spawn(move || {
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(POLLING_TIME));
+            std::thread::sleep(POLLING_TIME);
             // println!("Polling...");
             notify_polling.send(notify::DebouncedEvent::Rescan).unwrap();
         }
@@ -710,7 +760,7 @@ impl DaemonInfo {
             Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
         };
         let now = now();
-        if dinfo.restart_time < now && (now - dinfo.restart_time).as_secs() > LIVE_TIME {
+        if dinfo.restart_time < now && now - dinfo.restart_time > LIVE_TIME {
             return Err(std::io::Error::new(std::io::ErrorKind::Other,
                                            "Must have died long ago"));
         }
