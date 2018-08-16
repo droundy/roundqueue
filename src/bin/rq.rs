@@ -39,6 +39,9 @@ fn main() {
                      .default_value("1")
                      .hide_default_value(true)
                      .help("the maximum size of the output file [default: 1MB]"))
+                .arg(clap::Arg::with_name("restart")
+                     .long("restart")
+                     .help("this job can be restarted"))
                 .arg(clap::Arg::with_name("jobname")
                      .short("J")
                      .long("job-name")
@@ -243,7 +246,8 @@ fn main() {
             let max_output = (max_output_mb*((1<<20) as f64)) as u64;
             println!("submitted {:?}", &jn);
             roundqueue::Job::new(command, jn, output,
-                                 ncores, max_output).unwrap().submit().unwrap()
+                                 ncores, max_output,
+                                 m.is_present("restart")).unwrap().submit().unwrap()
         },
         (x, _) => {
             eprintln!("Invalid subcommand {}!", x);

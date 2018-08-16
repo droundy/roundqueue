@@ -147,10 +147,13 @@ pub struct Job {
     pub cores: usize,
     #[serde(default)]
     pub max_output: Option<u64>,
+    #[serde(default)]
+    pub restartable: bool,
 }
 
 impl Job {
-    pub fn new(cmd: Vec<String>, jobname: String, output: PathBuf, cores: usize, max_output: u64)
+    pub fn new(cmd: Vec<String>, jobname: String, output: PathBuf, cores: usize,
+               max_output: u64, restartable: bool)
                -> Result<Job> {
         Ok(Job {
             directory: std::env::current_dir()?,
@@ -161,6 +164,7 @@ impl Job {
             submitted: now(),
             cores: cores,
             max_output: Some(max_output),
+            restartable: restartable,
         })
     }
     pub fn cancel(&self) -> Result<()> {
