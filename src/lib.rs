@@ -398,7 +398,8 @@ impl Status {
     /// run_next consumes the status to enforce that we must re-read
     /// the status before attempting anything else.  This is because
     /// another node may have run something or submitted something.
-    fn run_next(self, host: &str, home_dir: &Path, threads: &longthreads::Threads) {
+    fn run_next(self, host: &str, home_dir: &Path, threads: &longthreads::Threads,
+                in_foreground: bool) {
         // "waiting" is the set of jobs that are waiting to run *on
         // this host*.  Thus this ignores any waiting jobs that cannot
         // run on this host because their user does not have a daemon
@@ -435,13 +436,6 @@ impl Status {
             return;
         }
 
-        let running_cores: usize = self.running.iter().filter(|j| &j.node == &host)
-            .map(|j| j.job.cores).sum();
-        if cpus < running_cores + job.cores {
-            myself.log(format!("Waiting for more cores for {}", job.jobname));
-            return;
-        }
-
         if let Err(e) = job.change_status(Path::new(WAITING), Path::new(RUNNING)) {
             myself.log(format!("Unable to change status of job {} ({})", &job.jobname, e));
             return;
@@ -461,6 +455,15 @@ impl Status {
             myself.log(format!("Error writing to output {:?}: {}",
                                job.directory.join(&job.output), e));
             return;
+        }
+
+        if in_foreground {
+            let home = std::env::home_dir().unwrap();
+            let host = hostname::get_hostname().unwrap();
+            unix_daemonize::daemonize_redirect(
+                Some(home.join(RQ).join(&host).with_extension("log")),
+                Some(home.join(RQ).join(&host).with_extension("log")),
+                unix_daemonize::ChdirMode::ChdirRoot).unwrap();
         }
 
         // First spawn the child...
@@ -573,7 +576,7 @@ impl Status {
     }
 }
 
-pub fn spawn_runner() -> Result<()> {
+pub fn spawn_runner(in_foreground: bool) -> Result<()> {
     ensure_directories()?;
     let home = std::env::home_dir().unwrap();
     let host = hostname::get_hostname().unwrap();
@@ -585,10 +588,12 @@ pub fn spawn_runner() -> Result<()> {
     let hyperthreads = num_cpus::get();
     println!("I am spawning a runner for {} with {} cpus in {:?}!",
              &host, cpus, &home);
-    unix_daemonize::daemonize_redirect(
-        Some(home.join(RQ).join(&host).with_extension("log")),
-        Some(home.join(RQ).join(&host).with_extension("log")),
-        unix_daemonize::ChdirMode::ChdirRoot).unwrap();
+    if !in_foreground {
+        unix_daemonize::daemonize_redirect(
+            Some(home.join(RQ).join(&host).with_extension("log")),
+            Some(home.join(RQ).join(&host).with_extension("log")),
+            unix_daemonize::ChdirMode::ChdirRoot).unwrap();
+    }
     DaemonInfo::write()?;
     let myself = DaemonInfo::new();
     myself.log(format!("==================\nRestarting runner process {}!",
@@ -598,9 +603,9 @@ pub fn spawn_runner() -> Result<()> {
     let notify_polling = notify_tx.clone();
     std::thread::spawn(move || {
         loop {
-            std::thread::sleep(POLLING_TIME);
             // println!("Polling...");
             notify_polling.send(notify::DebouncedEvent::Rescan).unwrap();
+            std::thread::sleep(POLLING_TIME);
         }
     });
     let mut watcher =
@@ -657,6 +662,10 @@ pub fn spawn_runner() -> Result<()> {
         // then we can quit now, because we know that we need not run
         // anything.
         if Status::my_waiting_jobs().len() == 0 {
+            if in_foreground {
+                println!("There are no runnable jobs.");
+                return Ok(());
+            }
             watcher.watch(home.join(RQ).join(CANCELING),
                           notify::RecursiveMode::NonRecursive).ok();
             notify_rx.recv().unwrap();
@@ -683,7 +692,7 @@ pub fn spawn_runner() -> Result<()> {
             .filter(|&j| status.nodes.iter().any(|d| d.hostname == j.node))
             .map(|j| j.job.cores).sum();
         if cpus > running && status.waiting.len() > 0 {
-            status.run_next(&host, &home, &threads);
+            status.run_next(&host, &home, &threads, in_foreground);
         } else if hyperthreads > running && status.waiting.len() > 0
             && total_running >= total_cpus
         {
@@ -707,6 +716,9 @@ pub fn spawn_runner() -> Result<()> {
             }
             let total_users = user_running_jobs.len();
             let cpus_per_user = total_cpus/total_users;
+            if !user_running_jobs.contains_key(&home) {
+                user_running_jobs.insert(home.clone(), 0);
+            }
             if user_running_jobs[&home] < cpus_per_user {
                 // It is possible that we are next in line and should
                 // run using a hyperthread...
@@ -718,10 +730,13 @@ pub fn spawn_runner() -> Result<()> {
                         .filter(|j| user_running_jobs[&j.job.home_dir] < cpus_per_user)
                         .count();
                     if cpus > politely_running {
-                        status.run_next(&host, &home, &threads);
+                        status.run_next(&host, &home, &threads, in_foreground);
                     }
                 }
             }
+        }
+        if in_foreground {
+            return Ok(());
         }
         notify_rx.recv().unwrap();
     }

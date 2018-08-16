@@ -29,8 +29,8 @@ impl TempDir {
                                            .join("target/debug")]).unwrap()
                 },
             };
-        println!("PATH is {:?}", &newpath);
-        println!("HOME is {:?}", &self.0);
+        // println!("PATH is {:?}", &newpath);
+        // println!("HOME is {:?}", &self.0);
         let s = std::process::Command::new("rq").args(args).env("PATH", newpath)
             .env("HOME", &self.0)
             .current_dir(&self.0).output();
@@ -236,13 +236,13 @@ fn cancel_all() {
     let tempdir = TempDir::new(&format!("tests/temp-homes/home-{}/user", line!()));
     assert!(tempdir.rq(&["daemon"]).status.success());
     assert!(tempdir.rq(&["run", "-J", "greet",
-                         "sh", "-c", "sleep 2 && echo hello > greeting"])
+                         "sh", "-c", "sleep 3 && echo hello > greeting"])
             .status.success());
     assert!(tempdir.rq(&["run", "-J", "hello",
-                         "sh", "-c", "sleep 2 && echo hello > hello"])
+                         "sh", "-c", "sleep 3 && echo hello > hello"])
             .status.success());
     assert!(tempdir.rq(&["cancel", "--all"]).status.success());
-    std::thread::sleep(std::time::Duration::from_secs(3));
+    std::thread::sleep(std::time::Duration::from_secs(5));
     tempdir.no_such_file("greeting");
     tempdir.no_such_file("hello");
 }
@@ -279,22 +279,26 @@ fn polite_users_share_cpus() {
         println!("this tests requires hyperthreading!");
         return;
     }
-    assert!(rude.rq(&["daemon"]).status.success());
-    assert!(polite.rq(&["daemon"]).status.success());
+    assert!(rude.rq(&["daemon", "--fg"]).status.success());
+    assert!(polite.rq(&["daemon", "--fg"]).status.success());
     for _ in 0..2*cpus {
         assert!(rude.rq(&["run", "sleep", "100"]).status.success());
     }
+    assert!(rude.rq(&["daemon", "--fg"]).status.success());
     println!("This next job won't run because all the cpus are busy sleeping.");
     assert!(rude.rq(&["run", "sh", "-c", "echo hello world > greeting"]).status.success());
     assert!(polite.rq(&["run", "sh", "-c", "echo hello > greeting"]).status.success());
     std::thread::sleep(std::time::Duration::from_secs(1));
-    assert!(rude.rq(&["daemon"]).status.success());
-    assert!(polite.rq(&["daemon"]).status.success());
+    assert!(rude.rq(&["daemon", "--fg"]).status.success());
+    assert!(polite.rq(&["daemon", "--fg"]).status.success());
     assert!(rude.rq(&[]).status.success());
     assert!(polite.rq(&[]).status.success());
     std::thread::sleep(std::time::Duration::from_secs(10));
     assert!(rude.rq(&[]).status.success());
     assert!(polite.rq(&[]).status.success());
+    assert!(rude.rq(&["nodes"]).status.success());
+    assert!(rude.rq(&["users"]).status.success());
+    assert!(polite.rq(&["daemon", "--fg"]).status.success());
     rude.no_such_file("greeting");
     polite.file_exists("greeting");
 }

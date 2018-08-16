@@ -116,11 +116,14 @@ fn main() {
                      .short("v")
                      .multiple(true)
                      .help("show verbose output"))
+                .arg(clap::Arg::with_name("fg")
+                     .long("fg")
+                     .help("Briefly run the daemon in the foreground (for testing)."))
         )
         .get_matches();
     match m.subcommand() {
-        ("daemon", Some(_)) => {
-            do_daemon().unwrap();
+        ("daemon", Some(m)) => {
+            roundqueue::spawn_runner(m.is_present("fg")).unwrap();
         },
         ("cancel", Some(m)) => {
             let job_selected = move |j: &roundqueue::Job| -> bool {
@@ -460,10 +463,6 @@ fn do_users() -> Result<()> {
              total_cpus,
              total_waiting);
     Ok(())
-}
-
-fn do_daemon() -> Result<()> {
-    roundqueue::spawn_runner()
 }
 
 fn pretty_duration(time: std::time::Duration) -> String {
