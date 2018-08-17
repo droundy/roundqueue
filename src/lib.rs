@@ -335,6 +335,18 @@ impl Status {
         }
         out
     }
+    pub fn my_running_jobs() -> Vec<RunningJob> {
+        let home = std::env::home_dir().unwrap();
+        let mut out = Vec::new();
+        if let Ok(rr) = home.join(".roundqueue").join(RUNNING).read_dir() {
+            for run in rr.flat_map(|r| r.ok()) {
+                if let Ok(j) = RunningJob::read(&run.path()) {
+                    out.push(j);
+                }
+            }
+        }
+        out
+    }
     pub fn my_completed_jobs(&self) -> Vec<RunningJob> {
         let home = std::env::home_dir().unwrap();
         let mut out = Vec::new();
@@ -695,46 +707,65 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
         let total_running: usize = status.running.iter()
             .filter(|&j| status.nodes.iter().any(|d| d.hostname == j.node))
             .map(|j| j.job.cores).sum();
+        if running >= cpus && status.waiting.len() > 0 {
+            // We should consider whether we have a restartable job
+            // that might be worth killing to make room for more.
+        }
         if cpus > running && status.waiting.len() > 0 {
             status.run_next(&host, &home, &threads, in_foreground);
-        } else if hyperthreads > running && status.waiting.len() > 0
-            && total_running >= total_cpus
-        {
-            // We will now decide whether to run a job using a
-            // hyperthread that shares a CPU core.  We do this in
-            // cases where some users are using more than their fair
-            // share of the cluster, and all the cores are currently
-            // busy, in order to ensure low latency for all users, at
-            // the cost of slowing down some jobs.
+        } else if status.waiting.len() > 0 && total_running >= total_cpus {
             let mut user_running_jobs = HashMap::new();
+            // the following ignores any jobs running on nodes
+            // that are not currently up by our measure.  This
+            // prevents us from concluding that other users are
+            // oversubscribed based on a faulty total number of
+            // CPUs.
             for hd in status.running.iter()
-                // the following ignores any jobs running on nodes
-                // that are not currently up by our measure.  This
-                // prevents us from concluding that other users are
-                // oversubscribed based on a faulty total number of
-                // CPUs.
                 .filter(|&j| status.nodes.iter().any(|d| d.hostname == j.node))
                 .map(|j| j.job.home_dir.clone()) {
                     let count = user_running_jobs.get(&hd).unwrap_or(&0)+1;
                     user_running_jobs.insert(hd, count);
-            }
-            let total_users = user_running_jobs.len();
-            let cpus_per_user = total_cpus/total_users;
+                }
             if !user_running_jobs.contains_key(&home) {
                 user_running_jobs.insert(home.clone(), 0);
             }
-            if user_running_jobs[&home] < cpus_per_user {
-                // It is possible that we are next in line and should
-                // run using a hyperthread...
-                let politely_waiting = status.waiting.iter()
-                    .filter(|j| user_running_jobs[&j.home_dir] < cpus_per_user)
-                    .count();
-                if politely_waiting > 0 {
-                    let politely_running = status.running.iter()
-                        .filter(|j| user_running_jobs[&j.job.home_dir] < cpus_per_user)
+            let total_users = user_running_jobs.len();
+            let cpus_per_user = total_cpus/total_users;
+            let fewest_running_waiting_user: usize = status.waiting.iter()
+                .map(|j| user_running_jobs.get(&j.home_dir).unwrap_or(&0)).min()
+                .map(|&n| n).unwrap_or(0);
+            if user_running_jobs[&home] > cpus_per_user
+                && user_running_jobs[&home] > fewest_running_waiting_user
+            {
+                // I should consider cancelling and resubmitting a job
+                // in order to be polite.
+                let my_running = Status::my_running_jobs();
+                if let Some(j) = my_running.into_iter().filter(|j| j.job.restartable)
+                    .min_by_key(|j| j.started)
+                {
+                    println!("Could consider restarting {}", j.job.jobname);
+                }
+            }
+            if hyperthreads > running {
+                // We will now decide whether to run a job using a
+                // hyperthread that shares a CPU core.  We do this in
+                // cases where some users are using more than their
+                // fair share of the cluster, and all the cores are
+                // currently busy, in order to ensure low latency for
+                // all users, at the cost of slowing down some jobs.
+                if user_running_jobs[&home] < cpus_per_user {
+                    // It is possible that we are next in line and should
+                    // run using a hyperthread...
+                    let politely_waiting = status.waiting.iter()
+                        .filter(|j| user_running_jobs[&j.home_dir] < cpus_per_user)
                         .count();
-                    if cpus > politely_running {
-                        status.run_next(&host, &home, &threads, in_foreground);
+                    if politely_waiting > 0 {
+                        let politely_running = status.running.iter()
+                            .filter(|j| user_running_jobs[&j.job.home_dir] < cpus_per_user)
+                            .count();
+                        if cpus > politely_running {
+                            status.run_next(&host, &home, &threads, in_foreground);
+                        }
                     }
                 }
             }
