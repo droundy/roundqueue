@@ -838,9 +838,18 @@ impl DaemonInfo {
             Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
         };
         let now = now();
-        if dinfo.restart_time < now && now - dinfo.restart_time > LIVE_TIME {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other,
-                                           "Must have died long ago"));
+        match dinfo.exists() {
+            Some(true) => (), // Cool!
+            Some(false) => {
+                return Err(std::io::Error::new(std::io::ErrorKind::Other,
+                                               "Process does not exist"));
+            }
+            None => {
+                if dinfo.restart_time < now && now - dinfo.restart_time > LIVE_TIME {
+                    return Err(std::io::Error::new(std::io::ErrorKind::Other,
+                                                   "Must have died long ago"));
+                }
+            }
         }
         Ok(dinfo)
     }
@@ -852,6 +861,23 @@ impl DaemonInfo {
     }
     fn log(&self, msg: String) {
         eprintln!("{}: {}", self.pid, msg);
+    }
+    fn exists(&self) -> Option<bool> {
+        let host = hostname::get_hostname().unwrap();
+        if self.hostname != host {
+            return None; // We have no clue
+        }
+        if let Ok(mut f) = std::fs::File::open(format!("/proc/{}/cmdline", self.pid)) {
+            let mut data = Vec::new();
+            f.read_to_end(&mut data).ok();
+            let mut data: &[u8] = &data;
+            for i in 0..data.len() {
+                if &data[i..i+b"daemon\0".len()] == b"daemon\0" {
+                    return Some(true);
+                }
+            }
+        }
+        Some(false)
     }
 }
 
