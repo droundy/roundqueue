@@ -2,6 +2,7 @@
 extern crate clap;
 
 extern crate roundqueue;
+extern crate hostname;
 
 use std::io::Result;
 use std::os::unix::fs::PermissionsExt;
@@ -386,14 +387,23 @@ fn do_q<F>(want_to_see: F) -> Result<()>
     status.running.reverse();
     for j in status.running.iter() {
         if want_to_see(&j.job) {
-            println!("R {:>8} {:10} {:7} {:7}{:>2} {}",
-                     homedir_to_username(&j.job.home_dir),
-                     &j.node,
-                     pretty_duration(j.duration()),
-                     pretty_duration(j.job.wait_duration()),
-                     j.job.cores,
-                     &j.job.jobname,
-            );
+            if Some(j.node.clone()) == hostname::get_hostname() && !j.exists() {
+                println!("r {:>8} {:10} {:7} {:7}{:>2} {}",
+                         homedir_to_username(&j.job.home_dir),
+                         &j.node,
+                         pretty_duration(j.duration()),
+                         pretty_duration(j.job.wait_duration()),
+                         j.job.cores,
+                         &j.job.jobname);
+            } else {
+                println!("R {:>8} {:10} {:7} {:7}{:>2} {}",
+                         homedir_to_username(&j.job.home_dir),
+                         &j.node,
+                         pretty_duration(j.duration()),
+                         pretty_duration(j.job.wait_duration()),
+                         j.job.cores,
+                         &j.job.jobname);
+            }
         }
     }
     Ok(())

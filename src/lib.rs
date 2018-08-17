@@ -120,7 +120,7 @@ impl RunningJob {
         }
         unsafe { libc::kill(self.pid as i32, libc::SIGTERM); }
         std::thread::sleep(Duration::from_secs(2));
-        if pid_exists(self.pid as i32) {
+        if self.exists() {
             let myself = DaemonInfo::new();
             myself.log(format!("FAILED to kill {} (pid {}) with SIGTERM",
                                self.job.jobname, self.pid));
@@ -133,6 +133,29 @@ impl RunningJob {
             }
         }
         self.canceled()
+    }
+    /// Check if this job exists on this host.  This checks if a
+    /// process with the right pid has the right command line.  It is
+    /// not perfect, but it beats just randomly killing a process with
+    /// the same id if something went wrong.
+    pub fn exists(&self) -> bool {
+        if let Ok(mut f) = std::fs::File::open(format!("/proc/{}/cmdline", self.pid)) {
+            let mut data = Vec::new();
+            f.read_to_end(&mut data).ok();
+            let mut data: &[u8] = &data;
+            for x in self.job.command.iter().map(|s| s.as_bytes()) {
+                if &data[..x.len()] != x || data[x.len()] != 0 {
+                    return false;
+                }
+                data = &data[x.len()+1..];
+            }
+            if data.len() > 1 {
+                return false;
+            }
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -291,7 +314,7 @@ impl Status {
                 if let Ok(rr) = rqdir.join(RUNNING).read_dir() {
                     for run in rr.flat_map(|r| r.ok()) {
                         if let Ok(j) = RunningJob::read(&run.path()) {
-                            if host == j.node && !pid_exists(j.pid as i32) {
+                            if host == j.node && !j.exists() {
                                 println!("Job {} appears to have failed!", j.job.jobname);
                                 j.zombie().ok();
                             } else {
