@@ -41,6 +41,7 @@ fn main() {
                      .help("the maximum size of the output file [default: 1MB]"))
                 .arg(clap::Arg::with_name("restart")
                      .long("restart")
+                     .short("R")
                      .help("this job can be restarted"))
                 .arg(clap::Arg::with_name("jobname")
                      .short("J")
