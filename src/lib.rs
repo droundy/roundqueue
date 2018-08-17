@@ -23,6 +23,7 @@ use std::os::unix::io::{FromRawFd,IntoRawFd};
 use std::os::unix::process::CommandExt;
 use std::sync::{Arc, Mutex};
 
+
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct RunningJob {
     pub job: Job,
@@ -707,10 +708,6 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
         let total_running: usize = status.running.iter()
             .filter(|&j| status.nodes.iter().any(|d| d.hostname == j.node))
             .map(|j| j.job.cores).sum();
-        if running >= cpus && status.waiting.len() > 0 {
-            // We should consider whether we have a restartable job
-            // that might be worth killing to make room for more.
-        }
         if cpus > running && status.waiting.len() > 0 {
             status.run_next(&host, &home, &threads, in_foreground);
         } else if status.waiting.len() > 0 && total_running >= total_cpus {
@@ -744,6 +741,14 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
                     .min_by_key(|j| j.started)
                 {
                     println!("Could consider restarting {}", j.job.jobname);
+                    let mut restart_job = j.job.clone();
+                    // First try to create a restart job, then kill the existing one.
+                    if restart_job.submit().is_ok() {
+                        if j.kill().is_err() {
+                            // If the kill failed, we should undo the restart job.
+                            restart_job.cancel().ok(); // If the cancel fails, such is life, all things are sad now.
+                        }
+                    }
                 }
             }
             if hyperthreads > running {
