@@ -147,23 +147,19 @@ impl RunningJob {
     /// not perfect, but it beats just randomly killing a process with
     /// the same id if something went wrong.
     pub fn exists(&self) -> bool {
-        if let Ok(mut f) = std::fs::File::open(format!("/proc/{}/cmdline", self.pid)) {
+        if let Ok(mut f) = std::fs::File::open(format!("/proc/{}/environ", self.pid)) {
             let mut data = Vec::new();
             f.read_to_end(&mut data).ok();
             let mut data: &[u8] = &data;
-            for x in self.job.command.iter().map(|s| s.as_bytes()) {
-                if &data[..x.len()] != x || data[x.len()] != 0 {
-                    return false;
+            let goal = format!("RQ_SUBMIT_TIME={}", self.job.submitted.as_secs());
+            let goal = goal.as_bytes();
+            for i in 0 .. data.len() - goal.len() {
+                if &data[i..i+goal.len()] == goal {
+                    return true;
                 }
-                data = &data[x.len()+1..];
             }
-            if data.len() > 1 {
-                return false;
-            }
-            true
-        } else {
-            false
         }
+        false
     }
 }
 
@@ -516,6 +512,7 @@ impl Status {
 
         // First spawn the child...
         let mut cmd = std::process::Command::new(&job.command[0]);
+
         let fd = f.into_raw_fd();
         let stderr = unsafe {
             std::process::Stdio::from_raw_fd(fd)
@@ -524,6 +521,7 @@ impl Status {
             std::process::Stdio::from_raw_fd(fd)
         };
         cmd.args(&job.command[1..]).current_dir(&job.directory)
+            .env("RQ_SUBMIT_TIME", format!("{}", job.submitted.as_secs()))
             .stderr(stderr)
             .stdout(stdout)
             .stdin(std::process::Stdio::null())
