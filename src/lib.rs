@@ -38,11 +38,19 @@ pub struct RunningJob {
 
 impl RunningJob {
     pub fn duration(&self) -> Duration {
-        let dur = now();
-        if let Some(t) = dur.checked_sub(self.started) {
-            t
+        if self.completed != std::time::Duration::from_secs(0) {
+            if let Some(t) = self.completed.checked_sub(self.started) {
+                t
+            } else {
+                Duration::from_secs(0)
+            }
         } else {
-            Duration::from_secs(0)
+            let dur = now();
+            if let Some(t) = dur.checked_sub(self.started) {
+                t
+            } else {
+                Duration::from_secs(0)
+            }
         }
     }
     fn completed(&self) -> Result<()> {
