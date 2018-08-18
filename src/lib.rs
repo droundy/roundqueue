@@ -53,6 +53,10 @@ impl RunningJob {
             }
         }
     }
+    pub fn wait_duration(&self) -> Duration {
+        self.started.checked_sub(self.job.submitted)
+            .unwrap_or(Duration::from_secs(0))
+    }
     fn completed(&self) -> Result<()> {
         if let Some(ec) = self.exit_code {
             if ec != 0 {

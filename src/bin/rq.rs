@@ -176,7 +176,7 @@ fn main() {
                                  homedir_to_username(&j.job.home_dir),
                                  &j.node,
                                  pretty_duration(j.duration()),
-                                 pretty_duration(j.job.wait_duration()),
+                                 pretty_duration(j.wait_duration()),
                                  &j.job.jobname,
                         );
                         if j.cancel().is_err() {
@@ -275,7 +275,7 @@ fn do_q<F>(want_to_see: F) -> Result<()>
     let mut most_recent_submission = std::time::Duration::from_secs(0);
     let seconds = std::time::Duration::from_secs(5);
     println!("STATU USER {:10} {:7} {:7} {} {}",
-             "NODE", "RTIME", "SUBMIT", "CPUS", "JOBNAME");
+             "NODE", "RTIME", "WAIT", "CPUS", "JOBNAME");
     for j in status.waiting.iter() {
         if j.home_dir == home && j.submitted > most_recent_submission {
             most_recent_submission = j.submitted;
@@ -326,7 +326,7 @@ fn do_q<F>(want_to_see: F) -> Result<()>
                      homedir_to_username(&j.job.home_dir),
                      &j.node,
                      pretty_duration(j.duration()),
-                     pretty_duration(j.job.wait_duration()),
+                     pretty_duration(j.wait_duration()),
                      j.job.cores,
                      &j.job.jobname,
             );
@@ -339,7 +339,7 @@ fn do_q<F>(want_to_see: F) -> Result<()>
                      homedir_to_username(&j.job.home_dir),
                      &j.node,
                      pretty_duration(j.duration()),
-                     pretty_duration(j.job.wait_duration()),
+                     pretty_duration(j.wait_duration()),
                      j.job.cores,
                      &j.job.jobname,
             );
@@ -352,7 +352,7 @@ fn do_q<F>(want_to_see: F) -> Result<()>
                      homedir_to_username(&j.job.home_dir),
                      &j.node,
                      pretty_duration(j.duration()),
-                     pretty_duration(j.job.wait_duration()),
+                     pretty_duration(j.wait_duration()),
                      j.job.cores,
                      &j.job.jobname,
             );
@@ -365,7 +365,7 @@ fn do_q<F>(want_to_see: F) -> Result<()>
                      homedir_to_username(&j.job.home_dir),
                      &j.node,
                      pretty_duration(j.duration()),
-                     pretty_duration(j.job.wait_duration()),
+                     pretty_duration(j.wait_duration()),
                      j.job.cores,
                      &j.job.jobname,
             );
@@ -378,7 +378,7 @@ fn do_q<F>(want_to_see: F) -> Result<()>
                      homedir_to_username(&j.job.home_dir),
                      &j.node,
                      pretty_duration(j.duration()),
-                     pretty_duration(j.job.wait_duration()),
+                     pretty_duration(j.wait_duration()),
                      j.job.cores,
                      &j.job.jobname,
             );
@@ -392,7 +392,7 @@ fn do_q<F>(want_to_see: F) -> Result<()>
                          homedir_to_username(&j.job.home_dir),
                          &j.node,
                          pretty_duration(j.duration()),
-                         pretty_duration(j.job.wait_duration()),
+                         pretty_duration(j.wait_duration()),
                          j.job.cores,
                          &j.job.jobname);
             } else {
@@ -400,7 +400,7 @@ fn do_q<F>(want_to_see: F) -> Result<()>
                          homedir_to_username(&j.job.home_dir),
                          &j.node,
                          pretty_duration(j.duration()),
-                         pretty_duration(j.job.wait_duration()),
+                         pretty_duration(j.wait_duration()),
                          j.job.cores,
                          &j.job.jobname);
             }
