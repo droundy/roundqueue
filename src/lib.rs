@@ -130,21 +130,24 @@ impl RunningJob {
                                            format!("cannot kill job on {} from host {}",
                                                    &self.node, &host)));
         }
-        unsafe { libc::kill(self.pid as i32, libc::SIGTERM); }
-        std::thread::sleep(Duration::from_secs(2));
         if self.exists() {
-            let myself = DaemonInfo::new();
-            myself.log(format!("FAILED to kill {} (pid {}) with SIGTERM",
-                               self.job.jobname, self.pid));
-            unsafe { libc::kill(self.pid as i32, libc::SIGKILL); }
+            self.canceled()?;
+            unsafe { libc::kill(self.pid as i32, libc::SIGTERM); }
             std::thread::sleep(Duration::from_secs(2));
-            if pid_exists(self.pid as i32) {
-                myself.log(format!("FAILED to kill {} (pid {}) with SIGKILL",
+            if self.exists() {
+                let myself = DaemonInfo::new();
+                myself.log(format!("FAILED to kill {} (pid {}) with SIGTERM",
                                    self.job.jobname, self.pid));
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, "bad kill?"))
+                unsafe { libc::kill(self.pid as i32, libc::SIGKILL); }
+                std::thread::sleep(Duration::from_secs(2));
+                if self.exists() {
+                    myself.log(format!("FAILED to kill {} (pid {}) with SIGKILL",
+                                       self.job.jobname, self.pid));
+                    return Err(std::io::Error::new(std::io::ErrorKind::Other, "bad kill?"))
+                }
             }
         }
-        self.canceled()
+        Ok(())
     }
     /// Check if this job exists on this host.  This checks if a
     /// process with the right pid has the right command line.  It is
