@@ -906,7 +906,7 @@ fn ensure_directories() -> Result<()> {
     std::fs::create_dir_all(&home.join(RQ).join(CANCELING))
 }
 
-fn now() -> Duration {
+pub fn now() -> Duration {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
 }
 

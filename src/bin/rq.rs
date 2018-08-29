@@ -93,6 +93,25 @@ fn main() {
                      .help("job names to cancel"))
         )
         .subcommand(
+            clap::SubCommand::with_name("restart")
+                .version(crate_version!())
+                .about("restart a job")
+                .arg(clap::Arg::with_name("jobname")
+                     .short("J")
+                     .long("job-name")
+                     .takes_value(true)
+                     .value_name("NAME")
+                     .help("the name of the job to restart"))
+                .arg(clap::Arg::with_name("all")
+                     .long("all")
+                     .short("a")
+                     .help("restart all jobs"))
+                .arg(clap::Arg::with_name("more-job-names")
+                     .index(1)
+                     .multiple(true)
+                     .help("job names to restart"))
+        )
+        .subcommand(
             clap::SubCommand::with_name("nodes")
                 .version(crate_version!())
                 .about("show node information")
@@ -179,9 +198,61 @@ fn main() {
                                  pretty_duration(j.wait_duration()),
                                  &j.job.jobname,
                         );
-                        if j.cancel().is_err() {
-                            println!("error canceling {}.?", &j.job.jobname);
+                        if let Err(e) = j.cancel() {
+                            println!("error canceling {}: {}", &j.job.jobname,
+                                     e);
                         }
+                    }
+                }
+            }
+        },
+        ("restart", Some(m)) => {
+            let job_selected = move |j: &roundqueue::Job| -> bool {
+                if m.is_present("all") {
+                    return true;
+                }
+                if let Some(mut jn) = m.values_of("jobname") {
+                    if jn.any(|jn| jn == j.jobname) { return true; }
+                }
+                if let Some(mut jn) = m.values_of("more-job-names") {
+                    if jn.any(|jn| jn == j.jobname) { return true; }
+                }
+                false
+            };
+            let status = roundqueue::Status::new().unwrap();
+            if let Some(jn) = m.values_of("jobname") {
+                for x in jn.filter(|jn| !status.has_jobname(jn)) {
+                    println!("No such job: {:?}", x);
+                }
+            }
+            if let Some(jn) = m.values_of("more-job-names") {
+                for x in jn.filter(|jn| !status.has_jobname(jn)) {
+                    println!("No such job: {:?}", x);
+                }
+            }
+            let mut retry = true;
+            while retry {
+                let status = roundqueue::Status::new().unwrap();
+                retry = false;
+                for j in status.running.iter().filter(|j| job_selected(&j.job)) {
+                    if !j.job.restartable {
+                        println!("job {} is not restartable.", j.job.jobname);
+                    } else {
+                        println!("canceling: R {:8} {:10} {:6} {:6} {:30}",
+                                 homedir_to_username(&j.job.home_dir),
+                                 &j.node,
+                                 pretty_duration(j.duration()),
+                                 pretty_duration(j.wait_duration()),
+                                 &j.job.jobname,
+                        );
+                        if let Err(e) = j.cancel() {
+                            println!("error canceling {}: {}", &j.job.jobname,
+                                     e);
+                        }
+                        // Now we resubmit the job.
+                        let mut newj = j.job.clone();
+                        newj.submitted = roundqueue::now();
+                        newj.submit().unwrap();
                     }
                 }
             }
