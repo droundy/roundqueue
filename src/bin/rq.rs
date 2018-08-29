@@ -238,7 +238,7 @@ fn main() {
                     if !j.job.restartable {
                         println!("job {} is not restartable.", j.job.jobname);
                     } else {
-                        println!("canceling: R {:8} {:10} {:6} {:6} {:30}",
+                        println!("restarting: R {:8} {:10} {:6} {:6} {:30}",
                                  homedir_to_username(&j.job.home_dir),
                                  &j.node,
                                  pretty_duration(j.duration()),
@@ -246,7 +246,7 @@ fn main() {
                                  &j.job.jobname,
                         );
                         if let Err(e) = j.cancel() {
-                            println!("error canceling {}: {}", &j.job.jobname,
+                            println!("error restarting {}: {}", &j.job.jobname,
                                      e);
                         }
                         // Now we resubmit the job.
