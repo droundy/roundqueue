@@ -165,6 +165,10 @@ impl RunningJob {
                     return true;
                 }
             }
+        } else {
+            // This happens if the jobs is that of another user, since
+            // we don't have permission to read their environment.
+            return pid_exists(self.pid as i32);
         }
         false
     }
