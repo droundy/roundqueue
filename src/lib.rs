@@ -207,6 +207,19 @@ impl Job {
             restartable: restartable,
         })
     }
+    fn pretty_command(&self) -> String {
+        let mut out = String::new();
+        for c in self.command.iter() {
+            if !c.contains(' ') && !c.contains('"') && !c.contains('\'') && !c.contains('\\') {
+                out.push_str(c);
+            } else {
+                out.push_str(&format!("{:?}", c));
+            }
+            out.push(' ');
+        }
+        out.pop();
+        out
+    }
     pub fn cancel(&self) -> Result<()> {
         std::fs::rename(self.filepath(Path::new(WAITING)),
                         self.filepath(Path::new(CANCELED)))
@@ -507,7 +520,8 @@ impl Status {
                     return;
                 },
             };
-        if let Err(e) = writeln!(f, "::::: Starting job {:?} on {}", &job.jobname, &host) {
+        if let Err(e) = writeln!(f, "::::: Starting job {:?} on {}: {}",
+                                 &job.jobname, &host, job.pretty_command()) {
             myself.log(format!("Error writing to output {:?}: {}",
                                job.directory.join(&job.output), e));
             return;
