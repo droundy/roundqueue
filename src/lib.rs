@@ -9,6 +9,7 @@ extern crate num_cpus;
 extern crate notify;
 extern crate libc;
 extern crate shared_child;
+extern crate dirs;
 
 mod longthreads;
 
@@ -196,7 +197,7 @@ impl Job {
                -> Result<Job> {
         Ok(Job {
             directory: std::env::current_dir()?,
-            home_dir: std::env::home_dir().unwrap(),
+            home_dir: dirs::home_dir().unwrap(),
             command: cmd,
             jobname: jobname,
             output: output,
@@ -298,7 +299,7 @@ impl Status {
             nodes: Vec::new(),
         };
         let host = hostname::get_hostname().unwrap();
-        let my_homedir = std::env::home_dir().unwrap();
+        let my_homedir = dirs::home_dir().unwrap();
         let mut root_home = my_homedir.clone();
         root_home.pop();
         let root_home = root_home;
@@ -363,7 +364,7 @@ impl Status {
         Ok(status)
     }
     pub fn my_waiting_jobs() -> Vec<Job> {
-        let home = std::env::home_dir().unwrap();
+        let home = dirs::home_dir().unwrap();
         let mut out = Vec::new();
         if let Ok(rr) = home.join(".roundqueue").join(WAITING).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
@@ -375,7 +376,7 @@ impl Status {
         out
     }
     pub fn my_running_jobs() -> Vec<RunningJob> {
-        let home = std::env::home_dir().unwrap();
+        let home = dirs::home_dir().unwrap();
         let mut out = Vec::new();
         if let Ok(rr) = home.join(".roundqueue").join(RUNNING).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
@@ -387,7 +388,7 @@ impl Status {
         out
     }
     pub fn my_completed_jobs(&self) -> Vec<RunningJob> {
-        let home = std::env::home_dir().unwrap();
+        let home = dirs::home_dir().unwrap();
         let mut out = Vec::new();
         if let Ok(rr) = home.join(".roundqueue").join(COMPLETED).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
@@ -399,7 +400,7 @@ impl Status {
         out
     }
     pub fn my_failed_jobs(&self) -> Vec<RunningJob> {
-        let home = std::env::home_dir().unwrap();
+        let home = dirs::home_dir().unwrap();
         let mut out = Vec::new();
         if let Ok(rr) = home.join(".roundqueue").join(FAILED).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
@@ -411,7 +412,7 @@ impl Status {
         out
     }
     pub fn my_zombie_jobs(&self) -> Vec<RunningJob> {
-        let home = std::env::home_dir().unwrap();
+        let home = dirs::home_dir().unwrap();
         let mut out = Vec::new();
         if let Ok(rr) = home.join(".roundqueue").join(ZOMBIE).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
@@ -423,7 +424,7 @@ impl Status {
         out
     }
     pub fn my_canceled_jobs(&self) -> Vec<RunningJob> {
-        let home = std::env::home_dir().unwrap();
+        let home = dirs::home_dir().unwrap();
         let mut out = Vec::new();
         if let Ok(rr) = home.join(".roundqueue").join(CANCELED).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
@@ -435,7 +436,7 @@ impl Status {
         out
     }
     pub fn my_canceling_jobs(&self) -> Vec<RunningJob> {
-        let home = std::env::home_dir().unwrap();
+        let home = dirs::home_dir().unwrap();
         let mut out = Vec::new();
         if let Ok(rr) = home.join(".roundqueue").join(CANCELING).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
@@ -513,7 +514,7 @@ impl Status {
         }
 
         if in_foreground {
-            let home = std::env::home_dir().unwrap();
+            let home = dirs::home_dir().unwrap();
             let host = hostname::get_hostname().unwrap();
             unix_daemonize::daemonize_redirect(
                 Some(home.join(RQ).join(&host).with_extension("log")),
@@ -635,7 +636,7 @@ impl Status {
 
 pub fn spawn_runner(in_foreground: bool) -> Result<()> {
     ensure_directories()?;
-    let home = std::env::home_dir().unwrap();
+    let home = dirs::home_dir().unwrap();
     let host = hostname::get_hostname().unwrap();
     let mut root_home = home.clone();
     root_home.pop();
@@ -842,7 +843,7 @@ impl DaemonInfo {
         }
     }
     fn read_my_own() -> Result<DaemonInfo> {
-        let home = std::env::home_dir().unwrap();
+        let home = dirs::home_dir().unwrap();
         let host = hostname::get_hostname().unwrap();
         DaemonInfo::read(&home.join(RQ).join(&host))
     }
@@ -871,7 +872,7 @@ impl DaemonInfo {
         Ok(dinfo)
     }
     fn write() -> Result<()> {
-        let home = std::env::home_dir().unwrap();
+        let home = dirs::home_dir().unwrap();
         let myself = DaemonInfo::new();
         let mut f = std::fs::File::create(&home.join(RQ).join(&myself.hostname))?;
         f.write_all(&serde_json::to_string(&myself).unwrap().as_bytes())
@@ -903,7 +904,7 @@ fn read_pid(fname: &Path) -> Result<libc::pid_t> {
 }
 
 fn ensure_directories() -> Result<()> {
-    let home = std::env::home_dir().unwrap();
+    let home = dirs::home_dir().unwrap();
     std::fs::create_dir_all(&home.join(RQ).join(WAITING))?;
     std::fs::create_dir_all(&home.join(RQ).join(RUNNING))?;
     std::fs::create_dir_all(&home.join(RQ).join(COMPLETED))?;

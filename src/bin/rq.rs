@@ -3,6 +3,7 @@ extern crate clap;
 
 extern crate roundqueue;
 extern crate hostname;
+extern crate dirs;
 
 use std::io::Result;
 use std::os::unix::fs::PermissionsExt;
@@ -265,7 +266,7 @@ fn main() {
         },
         ("q", _) => {
             if m.is_present("mine") {
-                let home = std::env::home_dir().unwrap();
+                let home = dirs::home_dir().unwrap();
                 do_q(|j| {&j.home_dir == &home}).unwrap()
             } else {
                 match m.value_of("user") {
@@ -276,7 +277,7 @@ fn main() {
         },
         (_, None) => {
             if m.is_present("mine") {
-                let home = std::env::home_dir().unwrap();
+                let home = dirs::home_dir().unwrap();
                 do_q(|j| {&j.home_dir == &home}).unwrap()
             } else {
                 match m.value_of("user") {
@@ -342,7 +343,7 @@ fn do_q<F>(want_to_see: F) -> Result<()>
     status.waiting.sort_by_key(|j| j.submitted);
     status.waiting.reverse();
     status.running.sort_by_key(|j| j.started);
-    let home = std::env::home_dir().unwrap();
+    let home = dirs::home_dir().unwrap();
     let mut most_recent_submission = std::time::Duration::from_secs(0);
     let seconds = std::time::Duration::from_secs(5);
     println!("STATU USER {:10} {:7} {:7} {} {}",
