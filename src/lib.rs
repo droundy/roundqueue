@@ -650,6 +650,7 @@ impl Status {
 
 pub fn spawn_runner(in_foreground: bool) -> Result<()> {
     ensure_directories()?;
+    std::env::set_var("RUST_BACKTRACE", "1"); // we always want to see a backtrace if daemon crashes
     let home = dirs::home_dir().unwrap();
     let host = hostname::get_hostname().unwrap();
     let mut root_home = home.clone();
