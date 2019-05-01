@@ -8,9 +8,11 @@ extern crate dirs;
 use std::io::Result;
 use std::os::unix::fs::PermissionsExt;
 
+const VERSION : &str = git_version::git_describe!("--always", "--dirty");
+
 fn main() {
     let m = clap::App::new("rq")
-        .version(crate_version!())
+        .version(VERSION)
         .about(crate_description!())
         .arg(clap::Arg::with_name("user")
              .short("u")
@@ -24,7 +26,7 @@ fn main() {
         .subcommand(
             clap::SubCommand::with_name("run")
                 .setting(clap::AppSettings::TrailingVarArg)
-                .version(crate_version!())
+                .version(VERSION)
                 .about("submit a new job")
                 .arg(clap::Arg::with_name("cores")
                      .short("c")
@@ -72,7 +74,7 @@ fn main() {
         )
         .subcommand(
             clap::SubCommand::with_name("cancel")
-                .version(crate_version!())
+                .version(VERSION)
                 .about("cancel a job")
                 .arg(clap::Arg::with_name("jobname")
                      .short("J")
@@ -95,7 +97,7 @@ fn main() {
         )
         .subcommand(
             clap::SubCommand::with_name("restart")
-                .version(crate_version!())
+                .version(VERSION)
                 .about("restart a job")
                 .arg(clap::Arg::with_name("jobname")
                      .short("J")
@@ -114,17 +116,17 @@ fn main() {
         )
         .subcommand(
             clap::SubCommand::with_name("nodes")
-                .version(crate_version!())
+                .version(VERSION)
                 .about("show node information")
         )
         .subcommand(
             clap::SubCommand::with_name("users")
-                .version(crate_version!())
+                .version(VERSION)
                 .about("show information about users")
         )
         .subcommand(
             clap::SubCommand::with_name("q")
-                .version(crate_version!())
+                .version(VERSION)
                 .about("show the queue")
                 .arg(clap::Arg::with_name("verbose")
                      .long("verbose")
@@ -134,7 +136,7 @@ fn main() {
         )
         .subcommand(
             clap::SubCommand::with_name("daemon")
-                .version(crate_version!())
+                .version(VERSION)
                 .about("spawn the runner daemon")
                 .arg(clap::Arg::with_name("verbose")
                      .long("verbose")
