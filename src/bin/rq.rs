@@ -8,7 +8,7 @@ extern crate dirs;
 use std::io::Result;
 use std::os::unix::fs::PermissionsExt;
 
-const VERSION : &str = git_version::git_describe!("--always", "--dirty");
+const VERSION : &str = git_version::git_describe!("--always", "--tags", "--dirty");
 
 fn main() {
     let m = clap::App::new("rq")
