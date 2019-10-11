@@ -547,11 +547,14 @@ impl Status {
             .env("RQ_SUBMIT_TIME", format!("{}", job.submitted.as_secs()))
             .stderr(stderr)
             .stdout(stdout)
-            .stdin(std::process::Stdio::null())
-            .before_exec(|| {
+            .stdin(std::process::Stdio::null());
+        unsafe {
+            cmd.pre_exec(|| {
                 // make child processes always be maximally nice!
-                unsafe { libc::nice(19); Ok(()) }
-        });
+                libc::nice(19);
+                Ok(())
+            });
+        }
         let child = match shared_child::SharedChild::spawn(&mut cmd) {
             Ok(c) => c,
             Err(e) => {
