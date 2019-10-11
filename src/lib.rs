@@ -158,13 +158,10 @@ impl RunningJob {
         if let Ok(mut f) = std::fs::File::open(format!("/proc/{}/environ", self.pid)) {
             let mut data = Vec::new();
             f.read_to_end(&mut data).ok();
-            let mut data: &[u8] = &data;
             let goal = format!("RQ_SUBMIT_TIME={}", self.job.submitted.as_secs());
             let goal = goal.as_bytes();
-            for i in 0 .. data.len() - goal.len() {
-                if &data[i..i+goal.len()] == goal {
-                    return true;
-                }
+            if data.windows(goal.len()).any(|w| w == goal) {
+                return true;
             }
         } else {
             // This happens if the jobs is that of another user, since
@@ -797,7 +794,7 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
                     .min_by_key(|j| j.started)
                 {
                     println!("Could consider restarting {}", j.job.jobname);
-                    let mut restart_job = j.job.clone();
+                    let restart_job = j.job.clone();
                     // First try to create a restart job, then kill the existing one.
                     if restart_job.submit().is_ok() {
                         if j.kill().is_err() {
@@ -903,11 +900,8 @@ impl DaemonInfo {
         if let Ok(mut f) = std::fs::File::open(format!("/proc/{}/cmdline", self.pid)) {
             let mut data = Vec::new();
             f.read_to_end(&mut data).ok();
-            let mut data: &[u8] = &data;
-            for i in 0..data.len() {
-                if &data[i..i+b"daemon\0".len()] == b"daemon\0" {
-                    return Some(true);
-                }
+            if data.windows(b"daemon\0".len()).any(|w| w == b"daemon\0") {
+                return Some(true);
             }
         }
         Some(false)
