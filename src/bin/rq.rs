@@ -320,6 +320,13 @@ fn main() {
             let ncores = value_t!(m, "cores", usize).unwrap_or_else(|e| e.exit());
             let max_output_mb = value_t!(m, "max-output", f64).unwrap_or_else(|e| e.exit());
             let max_output = (max_output_mb*((1<<20) as f64)) as u64;
+            if let Ok(len) = std::fs::metadata(&output).map(|x| x.len()) {
+                if len >= max_output {
+                    println!("Output file {:?} already exceeds maximum size of {} MB, exiting.",
+                             output, max_output_mb);
+                    std::process::exit(1);
+                }
+            }
             println!("submitted {:?}", &jn);
             roundqueue::Job::new(command, jn, output,
                                  ncores, max_output,
