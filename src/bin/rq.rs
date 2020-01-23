@@ -468,7 +468,7 @@ fn do_q<F>(want_to_see: F) -> Result<()>
     status.running.reverse();
     for j in status.running.iter() {
         if want_to_see(&j.job) {
-            if Some(j.node.clone()) == hostname::get_hostname() && !j.exists() {
+            if Some(j.node.clone()) == hostname::get().unwrap().into_string().ok() && !j.exists() {
                 println!("r {:>8} {:10} {:7} {:7}{:>2} {}",
                          homedir_to_username(&j.job.home_dir),
                          &j.node,

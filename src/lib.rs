@@ -125,7 +125,7 @@ impl RunningJob {
                         self.job.filepath(subdir))
     }
     pub fn kill(&self) -> Result<()> {
-        let host = hostname::get_hostname().unwrap();
+        let host = hostname::get().unwrap().into_string().unwrap();
         if self.node != host {
             return Err(std::io::Error::new(std::io::ErrorKind::Other,
                                            format!("cannot kill job on {} from host {}",
@@ -308,7 +308,7 @@ impl Status {
             running: Vec::new(),
             nodes: Vec::new(),
         };
-        let host = hostname::get_hostname().unwrap();
+        let host = hostname::get().unwrap().into_string().unwrap();
         let my_homedir = dirs::home_dir().unwrap();
         let mut root_home = my_homedir.clone();
         root_home.pop();
@@ -526,7 +526,7 @@ impl Status {
 
         if in_foreground {
             let home = dirs::home_dir().unwrap();
-            let host = hostname::get_hostname().unwrap();
+            let host = hostname::get().unwrap().into_string().unwrap();
             unix_daemonize::daemonize_redirect(
                 Some(home.join(RQ).join(&host).with_extension("log")),
                 Some(home.join(RQ).join(&host).with_extension("log")),
@@ -652,7 +652,7 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
     ensure_directories()?;
     std::env::set_var("RUST_BACKTRACE", "1"); // we always want to see a backtrace if daemon crashes
     let home = dirs::home_dir().unwrap();
-    let host = hostname::get_hostname().unwrap();
+    let host = hostname::get().unwrap().into_string().unwrap();
     let mut root_home = home.clone();
     root_home.pop();
     let root_home = root_home;
@@ -850,7 +850,7 @@ pub struct DaemonInfo {
 impl DaemonInfo {
     fn new() -> DaemonInfo {
         DaemonInfo {
-            hostname: hostname::get_hostname().unwrap(),
+            hostname: hostname::get().unwrap().into_string().unwrap(),
             pid: unsafe { libc::getpid() },
             physical_cores: num_cpus::get_physical(),
             logical_cpus: num_cpus::get(),
@@ -859,7 +859,7 @@ impl DaemonInfo {
     }
     fn read_my_own() -> Result<DaemonInfo> {
         let home = dirs::home_dir().unwrap();
-        let host = hostname::get_hostname().unwrap();
+        let host = hostname::get().unwrap().into_string().unwrap();
         DaemonInfo::read(&home.join(RQ).join(&host))
     }
     fn read(fname: &Path) -> Result<DaemonInfo> {
@@ -896,7 +896,7 @@ impl DaemonInfo {
         eprintln!("{}: {}", self.pid, msg);
     }
     fn exists(&self) -> Option<bool> {
-        let host = hostname::get_hostname().unwrap();
+        let host = hostname::get().unwrap().into_string().unwrap();
         if self.hostname != host {
             return None; // We have no clue
         }
