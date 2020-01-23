@@ -472,6 +472,7 @@ impl Status {
         // running on this host.
         let cpus = num_cpus::get_physical();
         let myself = DaemonInfo::new();
+        // myself.log(format!("I am in run_next."));
         let waiting: Vec<_> =  self.waiting.iter()
             .filter(|j| self.homedirs_sharing_host.contains(&j.home_dir))
             .filter(|j| j.cores <= cpus)
@@ -488,6 +489,7 @@ impl Status {
             }
         }
         if !next_homedir.contains(home_dir) {
+            myself.log(format!("Not my turn: {:?} should go next.", next_homedir));
             return;
         }
         let mut job = self.waiting[0].clone();
@@ -499,6 +501,7 @@ impl Status {
             }
         }
         if &job.home_dir != home_dir {
+            // myself.log(format!("Not my turn: {:?} should go next.", job.home_dir));
             return;
         }
 
@@ -817,16 +820,16 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
                 if user_running_jobs[&home] < cpus_per_user {
                     // It is possible that we are next in line and should
                     // run using a hyperthread...
+                    myself.log(format!("Thinking about using hyperthreads: {} < {}.",
+                                       user_running_jobs[&home], cpus_per_user));
                     let politely_waiting = status.waiting.iter()
                         .filter(|j| user_running_jobs[&j.home_dir] < cpus_per_user)
                         .count();
                     if politely_waiting > 0 {
-                        let politely_running = status.running.iter()
-                            .filter(|j| user_running_jobs[&j.job.home_dir] < cpus_per_user)
-                            .count();
-                        if cpus > politely_running {
-                            status.run_next(&host, &home, &threads, in_foreground);
-                        }
+                        myself.log(format!("    Starting a job since we have some {} waiting.", politely_waiting));
+                        status.run_next(&host, &home, &threads, in_foreground);
+                    } else {
+                        myself.log(format!("    I have no jobs waiting to run."));
                     }
                 }
             }
