@@ -18,7 +18,7 @@ use notify::{Watcher};
 use std::path::{Path,PathBuf};
 use std::time::{SystemTime,Duration,UNIX_EPOCH};
 use std::io::{Result,Write,Read};
-use std::collections::{HashSet,HashMap};
+use std::collections::{HashMap};
 
 use std::os::unix::io::{FromRawFd,IntoRawFd};
 use std::os::unix::process::CommandExt;
@@ -478,24 +478,21 @@ impl Status {
             .filter(|j| j.cores <= cpus)
             .map(|j| j.home_dir.clone()).collect();
         if waiting.len() == 0 { return; }
-        let mut next_homedir = HashSet::new();
-        let mut least_running = 100000;
-        for hd in waiting.into_iter() {
-            let count = self.running.iter().filter(|j| &j.job.home_dir == &hd)
-                .map(|j| j.job.cores).sum();
-            if count < least_running {
-                next_homedir.insert(hd);
-                least_running = count;
-            }
-        }
-        if !next_homedir.contains(home_dir) {
-            myself.log(format!("Not my turn: {:?} should go next.", next_homedir));
+        let run_counts: HashMap<_,_> =
+            waiting.iter()
+            .map(|hd| (hd.clone(),
+                       self.running.iter().filter(|j| &j.job.home_dir == hd).map(|j| j.job.cores).sum::<usize>()))
+            .collect();
+        let least_running = run_counts.values().cloned().min().unwrap();
+        if run_counts.get(home_dir) != Some(&least_running) {
+            // myself.log(format!("Not my turn 1: {:?}", run_counts));
             return;
         }
+        // myself.log(format!("The running counts are: {:?}", run_counts));
         let mut job = self.waiting[0].clone();
         let mut earliest_submitted = std::time::Duration::from_secs(0xffffffffffffff);
         for j in self.waiting.into_iter().filter(|j| j.cores <= cpus) {
-            if next_homedir.contains(&j.home_dir) && j.submitted < earliest_submitted {
+            if run_counts.get(&j.home_dir) == Some(&least_running) && j.submitted < earliest_submitted {
                 earliest_submitted = j.submitted;
                 job = j;
             }
