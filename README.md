@@ -16,6 +16,14 @@ should be reliable.  However, it is *not* designed to be efficient
 when there are large numbers of jobs or users.  It is intended for a
 small computing cluster, where $O(N^2)$ operation is acceptable.
 
+## Installing rq
+
+To install rq, you must have rust installed (see [https://rustup.rs]()).
+Then just type
+```
+cargo install roundqueue
+```
+
 ## Using rq
 
 Each user running `rq` should run `rq daemon` on each compute node on

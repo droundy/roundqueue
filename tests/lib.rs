@@ -8,7 +8,7 @@ impl TempDir {
         let here = std::env::current_dir().unwrap();
         let p = here.join(p);
         println!("remove test repository");
-        assert!(std::fs::remove_dir_all(&p).is_ok());
+        std::fs::remove_dir_all(&p).ok(); // ignore failure to remove directory: it might not exist
         println!("create {:?}", &p);
         assert!(std::fs::create_dir_all(&p).is_ok());
         TempDir(std::path::PathBuf::from(&p))
