@@ -3,6 +3,7 @@ name = "roundqueue"
 version = "0.1.4"
 authors = ["droundy <roundyd@physics.oregonstate.edu>"]
 description = "Easy queueing system"
+license = "GPL-2.0"
 
 [badges]
 travis-ci = { repository = "droundy/roundqueue", branch = "master" }
