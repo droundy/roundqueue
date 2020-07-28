@@ -1,5 +1,5 @@
-use std::sync::{Arc, Mutex, Condvar};
 use std;
+use std::sync::{Arc, Condvar, Mutex};
 
 /// A pool of threads that will wait until they are completed.
 /// Specifically, the drop method of `Threads` will wait until all of
@@ -18,7 +18,7 @@ impl Threads {
         }
     }
     pub fn spawn<F, T>(&self, f: F)
-        where
+    where
         F: FnOnce() -> T,
         F: Send + 'static,
         T: Send + 'static,

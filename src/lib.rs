@@ -1,29 +1,28 @@
 #[macro_use]
 extern crate serde_derive;
 
+extern crate dirs;
+extern crate hostname;
+extern crate libc;
+extern crate notify;
+extern crate num_cpus;
 extern crate serde;
 extern crate serde_json;
-extern crate hostname;
-extern crate unix_daemonize;
-extern crate num_cpus;
-extern crate notify;
-extern crate libc;
 extern crate shared_child;
-extern crate dirs;
+extern crate unix_daemonize;
 
 mod longthreads;
 
-use notify::{Watcher};
+use notify::Watcher;
 
-use std::path::{Path,PathBuf};
-use std::time::{SystemTime,Duration,UNIX_EPOCH};
-use std::io::{Result,Write,Read};
-use std::collections::{HashMap};
+use std::collections::HashMap;
+use std::io::{Read, Result, Write};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use std::os::unix::io::{FromRawFd,IntoRawFd};
+use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::os::unix::process::CommandExt;
 use std::sync::{Arc, Mutex};
-
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct RunningJob {
@@ -55,14 +54,17 @@ impl RunningJob {
         }
     }
     pub fn wait_duration(&self) -> Duration {
-        self.started.checked_sub(self.job.submitted)
+        self.started
+            .checked_sub(self.job.submitted)
             .unwrap_or(Duration::from_secs(0))
     }
     fn completed(&self) -> Result<()> {
         if let Some(ec) = self.exit_code {
             if ec != 0 {
-                std::fs::rename(self.job.filepath(Path::new(RUNNING)),
-                                self.job.filepath(Path::new(FAILED)))?;
+                std::fs::rename(
+                    self.job.filepath(Path::new(RUNNING)),
+                    self.job.filepath(Path::new(FAILED)),
+                )?;
                 let mut x = self.clone();
                 x.completed = now();
                 return x.save(&Path::new(FAILED));
@@ -70,35 +72,45 @@ impl RunningJob {
         }
         // First try renaming from CANCELING, just in case this job
         // has been cancelled right before it completed.
-        if let Err(_) = std::fs::rename(self.job.filepath(Path::new(CANCELING)),
-                                        self.job.filepath(Path::new(COMPLETED))) {
+        if let Err(_) = std::fs::rename(
+            self.job.filepath(Path::new(CANCELING)),
+            self.job.filepath(Path::new(COMPLETED)),
+        ) {
             // It looks like it wasn't cancelled, so let's rename from
             // RUNNING.
-            std::fs::rename(self.job.filepath(Path::new(RUNNING)),
-                            self.job.filepath(Path::new(COMPLETED)))?;
+            std::fs::rename(
+                self.job.filepath(Path::new(RUNNING)),
+                self.job.filepath(Path::new(COMPLETED)),
+            )?;
         }
         let mut x = self.clone();
         x.completed = now();
         x.save(&Path::new(COMPLETED))
     }
     pub fn cancel(&self) -> Result<()> {
-        std::fs::rename(self.job.filepath(Path::new(RUNNING)),
-                        self.job.filepath(Path::new(CANCELING)))?;
+        std::fs::rename(
+            self.job.filepath(Path::new(RUNNING)),
+            self.job.filepath(Path::new(CANCELING)),
+        )?;
         let mut x = self.clone();
         x.completed = now();
         x.save(&Path::new(CANCELING))?;
         self.kill()
     }
     pub fn zombie(&self) -> Result<()> {
-        std::fs::rename(self.job.filepath(Path::new(RUNNING)),
-                        self.job.filepath(Path::new(ZOMBIE)))?;
+        std::fs::rename(
+            self.job.filepath(Path::new(RUNNING)),
+            self.job.filepath(Path::new(ZOMBIE)),
+        )?;
         let mut x = self.clone();
         x.completed = now();
         x.save(&Path::new(ZOMBIE))
     }
     fn canceled(&self) -> Result<()> {
-        std::fs::rename(self.job.filepath(Path::new(CANCELING)),
-                        self.job.filepath(Path::new(CANCELED)))?;
+        std::fs::rename(
+            self.job.filepath(Path::new(CANCELING)),
+            self.job.filepath(Path::new(CANCELED)),
+        )?;
         let mut x = self.clone();
         x.completed = now();
         x.save(&Path::new(CANCELED))
@@ -114,37 +126,48 @@ impl RunningJob {
                 } else {
                     Ok(job)
                 }
-            },
+            }
             Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
         }
     }
     fn save(&self, subdir: &Path) -> Result<()> {
         let mut f = std::fs::File::create(self.job.filepath(subdir).with_extension("tmp"))?;
         f.write_all(&serde_json::to_string(self).unwrap().as_bytes())?;
-        std::fs::rename(self.job.filepath(subdir).with_extension("tmp"),
-                        self.job.filepath(subdir))
+        std::fs::rename(
+            self.job.filepath(subdir).with_extension("tmp"),
+            self.job.filepath(subdir),
+        )
     }
     pub fn kill(&self) -> Result<()> {
         let host = hostname::get().unwrap().into_string().unwrap();
         if self.node != host {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other,
-                                           format!("cannot kill job on {} from host {}",
-                                                   &self.node, &host)));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("cannot kill job on {} from host {}", &self.node, &host),
+            ));
         }
         if self.exists() {
             self.canceled()?;
-            unsafe { libc::kill(self.pid as i32, libc::SIGTERM); }
+            unsafe {
+                libc::kill(self.pid as i32, libc::SIGTERM);
+            }
             std::thread::sleep(Duration::from_secs(2));
             if self.exists() {
                 let myself = DaemonInfo::new();
-                myself.log(format!("FAILED to kill {} (pid {}) with SIGTERM",
-                                   self.job.jobname, self.pid));
-                unsafe { libc::kill(self.pid as i32, libc::SIGKILL); }
+                myself.log(format!(
+                    "FAILED to kill {} (pid {}) with SIGTERM",
+                    self.job.jobname, self.pid
+                ));
+                unsafe {
+                    libc::kill(self.pid as i32, libc::SIGKILL);
+                }
                 std::thread::sleep(Duration::from_secs(2));
                 if self.exists() {
-                    myself.log(format!("FAILED to kill {} (pid {}) with SIGKILL",
-                                       self.job.jobname, self.pid));
-                    return Err(std::io::Error::new(std::io::ErrorKind::Other, "bad kill?"))
+                    myself.log(format!(
+                        "FAILED to kill {} (pid {}) with SIGKILL",
+                        self.job.jobname, self.pid
+                    ));
+                    return Err(std::io::Error::new(std::io::ErrorKind::Other, "bad kill?"));
                 }
             }
         }
@@ -189,9 +212,14 @@ pub struct Job {
 }
 
 impl Job {
-    pub fn new(cmd: Vec<String>, jobname: String, output: PathBuf, cores: usize,
-               max_output: u64, restartable: bool)
-               -> Result<Job> {
+    pub fn new(
+        cmd: Vec<String>,
+        jobname: String,
+        output: PathBuf,
+        cores: usize,
+        max_output: u64,
+        restartable: bool,
+    ) -> Result<Job> {
         Ok(Job {
             directory: std::env::current_dir()?,
             home_dir: dirs::home_dir().unwrap(),
@@ -218,8 +246,10 @@ impl Job {
         out
     }
     pub fn cancel(&self) -> Result<()> {
-        std::fs::rename(self.filepath(Path::new(WAITING)),
-                        self.filepath(Path::new(CANCELED)))
+        std::fs::rename(
+            self.filepath(Path::new(WAITING)),
+            self.filepath(Path::new(CANCELED)),
+        )
     }
     pub fn wait_duration(&self) -> Duration {
         let dur = now();
@@ -230,8 +260,11 @@ impl Job {
         }
     }
     fn filename(&self) -> PathBuf {
-        PathBuf::from(format!("{}.{}.job",
-                              self.submitted.as_secs(), self.submitted.subsec_nanos()))
+        PathBuf::from(format!(
+            "{}.{}.job",
+            self.submitted.as_secs(),
+            self.submitted.subsec_nanos()
+        ))
     }
     fn filepath(&self, subdir: &Path) -> PathBuf {
         self.home_dir.join(RQ).join(subdir).join(self.filename())
@@ -248,7 +281,7 @@ impl Job {
                 } else {
                     Ok(job)
                 }
-            },
+            }
             Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
         }
     }
@@ -265,8 +298,10 @@ impl Job {
             exit_code: None,
         };
         f.write_all(&serde_json::to_string(&rj).unwrap().as_bytes())?;
-        std::fs::rename(&self.filepath(subdir).with_extension("tmp"),
-                        &self.filepath(subdir))
+        std::fs::rename(
+            &self.filepath(subdir).with_extension("tmp"),
+            &self.filepath(subdir),
+        )
     }
     fn change_status(&self, old_subdir: &Path, new_subdir: &Path) -> Result<()> {
         std::fs::rename(self.filepath(old_subdir), self.filepath(new_subdir))
@@ -289,7 +324,7 @@ const COMPLETED: &'static str = "completed";
 const CANCELED: &'static str = "canceled";
 const CANCELING: &'static str = "cancel";
 const SHORT_TIME: std::time::Duration = std::time::Duration::from_secs(1);
-const LIVE_TIME: std::time::Duration = std::time::Duration::from_secs(10*60);
+const LIVE_TIME: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 const POLLING_TIME: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -328,8 +363,10 @@ impl Status {
                 // roundqueue daemon on the same host we are using.
                 if let Ok(pid) = read_pid(&rqdir.join(&host)) {
                     if pid_exists(pid) {
-                        status.homedirs_sharing_host.push(root_home.join(userdir.path()));
-                        // println!("found homedir {:?}", root_home.join(userdir.path()));
+                        status
+                            .homedirs_sharing_host
+                            .push(root_home.join(userdir.path()));
+                    // println!("found homedir {:?}", root_home.join(userdir.path()));
                     } else {
                         // println!("no daemon: {:?}", root_home.join(userdir.path()));
                     }
@@ -464,8 +501,13 @@ impl Status {
     /// run_next consumes the status to enforce that we must re-read
     /// the status before attempting anything else.  This is because
     /// another node may have run something or submitted something.
-    fn run_next(self, host: &str, home_dir: &Path, threads: &longthreads::Threads,
-                in_foreground: bool) {
+    fn run_next(
+        self,
+        host: &str,
+        home_dir: &Path,
+        threads: &longthreads::Threads,
+        in_foreground: bool,
+    ) {
         // "waiting" is the set of jobs that are waiting to run *on
         // this host*.  Thus this ignores any waiting jobs that cannot
         // run on this host because their user does not have a daemon
@@ -473,15 +515,28 @@ impl Status {
         let cpus = num_cpus::get_physical();
         let myself = DaemonInfo::new();
         // myself.log(format!("I am in run_next."));
-        let waiting: Vec<_> =  self.waiting.iter()
+        let waiting: Vec<_> = self
+            .waiting
+            .iter()
             .filter(|j| self.homedirs_sharing_host.contains(&j.home_dir))
             .filter(|j| j.cores <= cpus)
-            .map(|j| j.home_dir.clone()).collect();
-        if waiting.len() == 0 { return; }
-        let run_counts: HashMap<_,_> =
-            waiting.iter()
-            .map(|hd| (hd.clone(),
-                       self.running.iter().filter(|j| &j.job.home_dir == hd).map(|j| j.job.cores).sum::<usize>()))
+            .map(|j| j.home_dir.clone())
+            .collect();
+        if waiting.len() == 0 {
+            return;
+        }
+        let run_counts: HashMap<_, _> = waiting
+            .iter()
+            .map(|hd| {
+                (
+                    hd.clone(),
+                    self.running
+                        .iter()
+                        .filter(|j| &j.job.home_dir == hd)
+                        .map(|j| j.job.cores)
+                        .sum::<usize>(),
+                )
+            })
             .collect();
         let least_running = run_counts.values().cloned().min().unwrap();
         if run_counts.get(home_dir) != Some(&least_running) {
@@ -492,7 +547,9 @@ impl Status {
         let mut job = self.waiting[0].clone();
         let mut earliest_submitted = std::time::Duration::from_secs(0xffffffffffffff);
         for j in self.waiting.into_iter().filter(|j| j.cores <= cpus) {
-            if run_counts.get(&j.home_dir) == Some(&least_running) && j.submitted < earliest_submitted {
+            if run_counts.get(&j.home_dir) == Some(&least_running)
+                && j.submitted < earliest_submitted
+            {
                 earliest_submitted = j.submitted;
                 job = j;
             }
@@ -503,24 +560,40 @@ impl Status {
         }
 
         if let Err(e) = job.change_status(Path::new(WAITING), Path::new(RUNNING)) {
-            myself.log(format!("Unable to change status of job {} ({})", &job.jobname, e));
+            myself.log(format!(
+                "Unable to change status of job {} ({})",
+                &job.jobname, e
+            ));
             return;
         }
         myself.log(format!("starting {:?}", &job.jobname));
         let mut f = match std::fs::OpenOptions::new()
             .create(true)
-            .append(true).open(job.directory.join(&job.output)) {
-                Ok(f) => f,
-                Err(e) => {
-                    myself.log(format!("Error creating output {:?}: {}",
-                                       job.directory.join(&job.output), e));
-                    return;
-                },
-            };
-        if let Err(e) = writeln!(f, "::::: Starting job {:?} on {}: {}",
-                                 &job.jobname, &host, job.pretty_command()) {
-            myself.log(format!("Error writing to output {:?}: {}",
-                               job.directory.join(&job.output), e));
+            .append(true)
+            .open(job.directory.join(&job.output))
+        {
+            Ok(f) => f,
+            Err(e) => {
+                myself.log(format!(
+                    "Error creating output {:?}: {}",
+                    job.directory.join(&job.output),
+                    e
+                ));
+                return;
+            }
+        };
+        if let Err(e) = writeln!(
+            f,
+            "::::: Starting job {:?} on {}: {}",
+            &job.jobname,
+            &host,
+            job.pretty_command()
+        ) {
+            myself.log(format!(
+                "Error writing to output {:?}: {}",
+                job.directory.join(&job.output),
+                e
+            ));
             return;
         }
 
@@ -530,20 +603,19 @@ impl Status {
             unix_daemonize::daemonize_redirect(
                 Some(home.join(RQ).join(&host).with_extension("log")),
                 Some(home.join(RQ).join(&host).with_extension("log")),
-                unix_daemonize::ChdirMode::ChdirRoot).unwrap();
+                unix_daemonize::ChdirMode::ChdirRoot,
+            )
+            .unwrap();
         }
 
         // First spawn the child...
         let mut cmd = std::process::Command::new(&job.command[0]);
 
         let fd = f.into_raw_fd();
-        let stderr = unsafe {
-            std::process::Stdio::from_raw_fd(fd)
-        };
-        let stdout = unsafe {
-            std::process::Stdio::from_raw_fd(fd)
-        };
-        cmd.args(&job.command[1..]).current_dir(&job.directory)
+        let stderr = unsafe { std::process::Stdio::from_raw_fd(fd) };
+        let stdout = unsafe { std::process::Stdio::from_raw_fd(fd) };
+        cmd.args(&job.command[1..])
+            .current_dir(&job.directory)
             .env("RQ_SUBMIT_TIME", format!("{}", job.submitted.as_secs()))
             .stderr(stderr)
             .stdout(stdout)
@@ -561,7 +633,7 @@ impl Status {
                 myself.log(format!("Unable to spawn child: {}", e));
                 // runningjob.failed().ok();
                 return;
-            },
+            }
         };
 
         let mut runningjob = RunningJob {
@@ -571,7 +643,7 @@ impl Status {
             pid: child.id(),
             completed: std::time::Duration::from_secs(0),
             exit_code: None,
-         };
+        };
         if let Err(e) = runningjob.save(Path::new(RUNNING)) {
             myself.log(format!("Yikes, unable to save job? {}", e));
             return;
@@ -605,11 +677,19 @@ impl Status {
                     if let Ok(md) = output_path.metadata() {
                         if md.len() > max_output {
                             child_to_kill.kill().ok();
-                            if let Ok(mut f) = std::fs::OpenOptions::new().create(true)
-                                .append(true).open(output_path)
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(output_path)
                             {
-                                writeln!(f, ":::::: [{}] Job created too large an output file! {} > {}",
-                                         child_to_kill.id(), md.len(), max_output).ok();
+                                writeln!(
+                                    f,
+                                    ":::::: [{}] Job created too large an output file! {} > {}",
+                                    child_to_kill.id(),
+                                    md.len(),
+                                    max_output
+                                )
+                                .ok();
                             }
                         }
                     }
@@ -623,25 +703,33 @@ impl Status {
         threads.spawn(move || {
             match child.wait() {
                 Err(e) => {
-                    myself.log(format!("Error running {:?}: {}",
-                                       runningjob.job.command, e));
-                },
+                    myself.log(format!("Error running {:?}: {}", runningjob.job.command, e));
+                }
                 Ok(st) => {
-                    if let Ok(mut f) = std::fs::OpenOptions::new().create(true)
-                        .append(true).open(runningjob.job.directory.join(&runningjob.job.output))
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(runningjob.job.directory.join(&runningjob.job.output))
                     {
-                        writeln!(f, ":::::: [{}] Job {:?} exited with status {:?}",
-                                 myself.pid, &runningjob.job.jobname, st.code()).ok();
+                        writeln!(
+                            f,
+                            ":::::: [{}] Job {:?} exited with status {:?}",
+                            myself.pid,
+                            &runningjob.job.jobname,
+                            st.code()
+                        )
+                        .ok();
                         runningjob.exit_code = st.code();
                     }
-                    myself.log(format!("Done running {:?}: {}",
-                                       runningjob.job.jobname, st));
+                    myself.log(format!("Done running {:?}: {}", runningjob.job.jobname, st));
                 }
             }
             *all_done_setter.lock().unwrap() = true;
             if let Err(e) = runningjob.completed() {
-                myself.log(format!("Unable to change status of completed job {} ({})",
-                                   &runningjob.job.jobname, e));
+                myself.log(format!(
+                    "Unable to change status of completed job {} ({})",
+                    &runningjob.job.jobname, e
+                ));
                 return;
             }
         });
@@ -659,18 +747,24 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
 
     let cpus = num_cpus::get_physical();
     let hyperthreads = num_cpus::get();
-    println!("I am spawning a runner for {} with {} cpus in {:?}!",
-             &host, cpus, &home);
+    println!(
+        "I am spawning a runner for {} with {} cpus in {:?}!",
+        &host, cpus, &home
+    );
     if !in_foreground {
         unix_daemonize::daemonize_redirect(
             Some(home.join(RQ).join(&host).with_extension("log")),
             Some(home.join(RQ).join(&host).with_extension("log")),
-            unix_daemonize::ChdirMode::ChdirRoot).unwrap();
+            unix_daemonize::ChdirMode::ChdirRoot,
+        )
+        .unwrap();
     }
     DaemonInfo::write()?;
     let myself = DaemonInfo::new();
-    myself.log(format!("==================\nRestarting runner process {}!",
-                       myself.pid));
+    myself.log(format!(
+        "==================\nRestarting runner process {}!",
+        myself.pid
+    ));
     let mut old_status = Status::new()?;
     let (notify_tx, notify_rx) = std::sync::mpsc::channel();
     let notify_polling = notify_tx.clone();
@@ -682,12 +776,15 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
         }
     });
     let mut watcher =
-        notify::watcher(notify_tx.clone(),
-                        std::time::Duration::from_secs(1)).unwrap();
+        notify::watcher(notify_tx.clone(), std::time::Duration::from_secs(1)).unwrap();
     // We watch our own user's WAITING directory, since this is the
     // only place new jobs can show up that we might want to run.
-    watcher.watch(home.join(RQ).join(WAITING),
-                  notify::RecursiveMode::NonRecursive).ok();
+    watcher
+        .watch(
+            home.join(RQ).join(WAITING),
+            notify::RecursiveMode::NonRecursive,
+        )
+        .ok();
     // We watch all user RUNNING directories, since in the future they
     // may be running a job on this host, and when that job completes
     // we may want to run a job of our own.  Even if they don't
@@ -695,8 +792,12 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
     // start a daemon in the future, while we are still running!
     for userdir in root_home.read_dir()? {
         if let Ok(userdir) = userdir {
-            watcher.watch(userdir.path().join(RQ).join(RUNNING),
-                          notify::RecursiveMode::NonRecursive).ok();
+            watcher
+                .watch(
+                    userdir.path().join(RQ).join(RUNNING),
+                    notify::RecursiveMode::NonRecursive,
+                )
+                .ok();
         }
     }
     let threads = longthreads::Threads::new();
@@ -709,8 +810,12 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
         // jobs.  This *should* ensure that we don't end up with
         // daemons that are disconnected from reality and rely on our
         // POLLING_TIME to run jobs.
-        watcher.watch(home.join(RQ).join(WAITING),
-                      notify::RecursiveMode::NonRecursive).ok();
+        watcher
+            .watch(
+                home.join(RQ).join(WAITING),
+                notify::RecursiveMode::NonRecursive,
+            )
+            .ok();
         if let Ok(rr) = home.join(RQ).join(CANCELING).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
                 if let Ok(j) = RunningJob::read(&run.path()) {
@@ -722,11 +827,13 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
         }
         // Now check whether we are in fact the real daemon running on
         // this node/home combination.
-        let daemon_running = DaemonInfo::read_my_own()
-            .expect("Lock file unreadable, I should exit");
+        let daemon_running =
+            DaemonInfo::read_my_own().expect("Lock file unreadable, I should exit");
         if daemon_running.pid != myself.pid {
-            myself.log(format!("I {} have been replaced by {}.",
-                               myself.pid, daemon_running.pid));
+            myself.log(format!(
+                "I {} have been replaced by {}.",
+                myself.pid, daemon_running.pid
+            ));
             return Ok(()); // being replaced is not an error!
         }
         DaemonInfo::write().unwrap();
@@ -739,31 +846,50 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
                 println!("There are no runnable jobs.");
                 return Ok(());
             }
-            watcher.watch(home.join(RQ).join(CANCELING),
-                          notify::RecursiveMode::NonRecursive).ok();
+            watcher
+                .watch(
+                    home.join(RQ).join(CANCELING),
+                    notify::RecursiveMode::NonRecursive,
+                )
+                .ok();
             notify_rx.recv().unwrap();
             continue;
         }
         for userdir in root_home.read_dir()? {
             if let Ok(userdir) = userdir {
-                watcher.watch(userdir.path().join(RQ).join(RUNNING),
-                              notify::RecursiveMode::NonRecursive).ok();
+                watcher
+                    .watch(
+                        userdir.path().join(RQ).join(RUNNING),
+                        notify::RecursiveMode::NonRecursive,
+                    )
+                    .ok();
             }
         }
         // We have a job we would like to run, so let us now find out
         // if it is runnable!
         let status = Status::new().unwrap();
-        let running = status.running.iter().filter(|j| &j.node == &host)
-            .map(|j| j.job.cores).sum();
+        let running = status
+            .running
+            .iter()
+            .filter(|j| &j.node == &host)
+            .map(|j| j.job.cores)
+            .sum();
         if old_status != status {
-            myself.log(format!("Currently using {}/{} cores, with {} jobs waiting.",
-                               running, cpus, status.waiting.len()));
+            myself.log(format!(
+                "Currently using {}/{} cores, with {} jobs waiting.",
+                running,
+                cpus,
+                status.waiting.len()
+            ));
         }
         old_status = status.clone();
         let total_cpus: usize = status.nodes.iter().map(|di| di.physical_cores).sum();
-        let total_running: usize = status.running.iter()
+        let total_running: usize = status
+            .running
+            .iter()
             .filter(|&j| status.nodes.iter().any(|d| d.hostname == j.node))
-            .map(|j| j.job.cores).sum();
+            .map(|j| j.job.cores)
+            .sum();
         if cpus > running && status.waiting.len() > 0 {
             status.run_next(&host, &home, &threads, in_foreground);
         } else if status.waiting.len() > 0 && total_running >= total_cpus {
@@ -773,27 +899,36 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
             // prevents us from concluding that other users are
             // oversubscribed based on a faulty total number of
             // CPUs.
-            for hd in status.running.iter()
+            for hd in status
+                .running
+                .iter()
                 .filter(|&j| status.nodes.iter().any(|d| d.hostname == j.node))
-                .map(|j| j.job.home_dir.clone()) {
-                    let count = user_running_jobs.get(&hd).unwrap_or(&0)+1;
-                    user_running_jobs.insert(hd, count);
-                }
+                .map(|j| j.job.home_dir.clone())
+            {
+                let count = user_running_jobs.get(&hd).unwrap_or(&0) + 1;
+                user_running_jobs.insert(hd, count);
+            }
             if !user_running_jobs.contains_key(&home) {
                 user_running_jobs.insert(home.clone(), 0);
             }
             let total_users = user_running_jobs.len();
-            let cpus_per_user = total_cpus/total_users;
-            let fewest_running_waiting_user: usize = status.waiting.iter()
-                .map(|j| user_running_jobs.get(&j.home_dir).unwrap_or(&0)).min()
-                .map(|&n| n).unwrap_or(0);
+            let cpus_per_user = total_cpus / total_users;
+            let fewest_running_waiting_user: usize = status
+                .waiting
+                .iter()
+                .map(|j| user_running_jobs.get(&j.home_dir).unwrap_or(&0))
+                .min()
+                .map(|&n| n)
+                .unwrap_or(0);
             if user_running_jobs[&home] > cpus_per_user
                 && user_running_jobs[&home] > fewest_running_waiting_user
             {
                 // I should consider cancelling and resubmitting a job
                 // in order to be polite.
                 let my_running = Status::my_running_jobs();
-                if let Some(j) = my_running.into_iter().filter(|j| j.job.restartable)
+                if let Some(j) = my_running
+                    .into_iter()
+                    .filter(|j| j.job.restartable)
                     .min_by_key(|j| j.started)
                 {
                     println!("Could consider restarting {}", j.job.jobname);
@@ -817,13 +952,20 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
                 if user_running_jobs[&home] < cpus_per_user {
                     // It is possible that we are next in line and should
                     // run using a hyperthread...
-                    myself.log(format!("Thinking about using hyperthreads: {} < {}.",
-                                       user_running_jobs[&home], cpus_per_user));
-                    let politely_waiting = status.waiting.iter()
+                    myself.log(format!(
+                        "Thinking about using hyperthreads: {} < {}.",
+                        user_running_jobs[&home], cpus_per_user
+                    ));
+                    let politely_waiting = status
+                        .waiting
+                        .iter()
                         .filter(|j| user_running_jobs[&j.home_dir] < cpus_per_user)
                         .count();
                     if politely_waiting > 0 {
-                        myself.log(format!("    Starting a job since we have some {} waiting.", politely_waiting));
+                        myself.log(format!(
+                            "    Starting a job since we have some {} waiting.",
+                            politely_waiting
+                        ));
                         status.run_next(&host, &home, &threads, in_foreground);
                     } else {
                         myself.log(format!("    I have no jobs waiting to run."));
@@ -874,13 +1016,17 @@ impl DaemonInfo {
         match dinfo.exists() {
             Some(true) => (), // Cool!
             Some(false) => {
-                return Err(std::io::Error::new(std::io::ErrorKind::Other,
-                                               "Process does not exist"));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Process does not exist",
+                ));
             }
             None => {
                 if dinfo.restart_time < now && now - dinfo.restart_time > LIVE_TIME {
-                    return Err(std::io::Error::new(std::io::ErrorKind::Other,
-                                                   "Must have died long ago"));
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Must have died long ago",
+                    ));
                 }
             }
         }
