@@ -1,6 +1,6 @@
 [package]
 name = "roundqueue"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["droundy <roundyd@physics.oregonstate.edu>"]
 description = "Easy queueing system"
 
