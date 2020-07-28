@@ -736,7 +736,7 @@ impl Status {
     }
 }
 
-pub fn spawn_runner(in_foreground: bool) -> Result<()> {
+pub fn spawn_runner(in_foreground: bool, quietly: bool) -> Result<()> {
     ensure_directories()?;
     std::env::set_var("RUST_BACKTRACE", "1"); // we always want to see a backtrace if daemon crashes
     let home = dirs::home_dir().unwrap();
@@ -747,10 +747,12 @@ pub fn spawn_runner(in_foreground: bool) -> Result<()> {
 
     let cpus = num_cpus::get_physical();
     let hyperthreads = num_cpus::get();
-    println!(
-        "I am spawning a runner for {} with {} cpus in {:?}!",
-        &host, cpus, &home
-    );
+    if !quietly {
+        println!(
+            "I am spawning a runner for {} with {} cpus in {:?}!",
+            &host, cpus, &home
+        );
+    }
     if !in_foreground {
         unix_daemonize::daemonize_redirect(
             Some(home.join(RQ).join(&host).with_extension("log")),

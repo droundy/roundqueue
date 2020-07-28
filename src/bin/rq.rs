@@ -191,7 +191,7 @@ fn main() {
         .get_matches();
     match m.subcommand() {
         ("daemon", Some(m)) => {
-            roundqueue::spawn_runner(m.is_present("fg")).unwrap();
+            roundqueue::spawn_runner(m.is_present("fg"), false).unwrap();
         }
         ("cancel", Some(m)) => {
             let job_selected = move |j: &roundqueue::Job| -> bool {
@@ -260,6 +260,7 @@ fn main() {
             }
         }
         ("restart", Some(m)) => {
+            roundqueue::spawn_runner(false, true).unwrap();
             let job_selected = move |j: &roundqueue::Job| -> bool {
                 if m.is_present("all") {
                     return true;
@@ -343,6 +344,7 @@ fn main() {
             }
         }
         ("run", Some(m)) => {
+            roundqueue::spawn_runner(false, true).unwrap();
             let mut command = Vec::new();
             if let Some(c) = m.values_of("command") {
                 for x in c {
