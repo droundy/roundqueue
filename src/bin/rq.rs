@@ -260,7 +260,6 @@ fn main() {
             }
         }
         ("restart", Some(m)) => {
-            roundqueue::spawn_runner(false, true).unwrap();
             let job_selected = move |j: &roundqueue::Job| -> bool {
                 if m.is_present("all") {
                     return true;
@@ -314,6 +313,7 @@ fn main() {
                     }
                 }
             }
+            roundqueue::spawn_runner(false, true).unwrap();
         }
         ("nodes", _) => {
             do_nodes().unwrap();
@@ -344,7 +344,6 @@ fn main() {
             }
         }
         ("run", Some(m)) => {
-            roundqueue::spawn_runner(false, true).unwrap();
             let mut command = Vec::new();
             if let Some(c) = m.values_of("command") {
                 for x in c {
@@ -396,7 +395,8 @@ fn main() {
             )
             .unwrap()
             .submit()
-            .unwrap()
+            .unwrap();
+            roundqueue::spawn_runner(false, true).unwrap();
         }
         (x, _) => {
             eprintln!("Invalid subcommand {}!", x);
