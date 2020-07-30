@@ -1051,7 +1051,10 @@ impl DaemonInfo {
         if let Ok(mut f) = std::fs::File::open(format!("/proc/{}/cmdline", self.pid)) {
             let mut data = Vec::new();
             f.read_to_end(&mut data).ok();
-            if data.windows(b"daemon\0".len()).any(|w| w == b"daemon\0") {
+            if data.windows(b"daemon\0".len()).any(|w| w == b"daemon\0")
+                || data.windows(b"restart".len()).any(|w| w == b"restart")
+                || data.windows(b"run".len()).any(|w| w == b"run")
+            {
                 return Some(true);
             }
         }
