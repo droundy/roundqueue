@@ -559,6 +559,25 @@ impl Status {
             return;
         }
 
+        // Now I need to determine if this job is actually runnable.  It may require more
+        // cores than are available.
+        let status = Status::new().unwrap();
+        let cores_in_use: usize = status
+            .running
+            .iter()
+            .filter(|&j| host == j.node)
+            .map(|j| j.job.cores)
+            .sum();
+
+        let cores_available = cpus - cores_in_use;
+        if job.cores > cores_available {
+            // myself.log(format!(
+            //     "Not enough cores available: {}/{} cores in use, need {}",
+            //     cores_in_use, cpus, job.cores
+            // ));
+            return;
+        }
+
         if let Err(e) = job.change_status(Path::new(WAITING), Path::new(RUNNING)) {
             myself.log(format!(
                 "Unable to change status of job {} ({})",
