@@ -895,35 +895,35 @@ pub fn spawn_runner(in_foreground: bool, quietly: bool) -> Result<()> {
         if cpus > running && status.waiting.len() > 0 {
             status.run_next(&host, &home, &threads, in_foreground);
         } else if status.waiting.len() > 0 && total_running >= total_cpus {
-            let mut user_running_jobs = HashMap::new();
+            let mut user_running_cores = HashMap::new();
             // the following ignores any jobs running on nodes
             // that are not currently up by our measure.  This
             // prevents us from concluding that other users are
             // oversubscribed based on a faulty total number of
             // CPUs.
-            for hd in status
+            for j in status
                 .running
                 .iter()
                 .filter(|&j| status.nodes.iter().any(|d| d.hostname == j.node))
-                .map(|j| j.job.home_dir.clone())
             {
-                let count = user_running_jobs.get(&hd).unwrap_or(&0) + 1;
-                user_running_jobs.insert(hd, count);
+                let hd = j.job.home_dir.clone();
+                let count = user_running_cores.get(&hd).unwrap_or(&0) + j.job.cores;
+                user_running_cores.insert(hd, count);
             }
-            if !user_running_jobs.contains_key(&home) {
-                user_running_jobs.insert(home.clone(), 0);
+            if !user_running_cores.contains_key(&home) {
+                user_running_cores.insert(home.clone(), 0);
             }
-            let total_users = user_running_jobs.len();
+            let total_users = user_running_cores.len();
             let cpus_per_user = total_cpus / total_users;
             let fewest_running_waiting_user: usize = status
                 .waiting
                 .iter()
-                .map(|j| user_running_jobs.get(&j.home_dir).unwrap_or(&0))
+                .map(|j| user_running_cores.get(&j.home_dir).unwrap_or(&0))
                 .min()
                 .map(|&n| n)
                 .unwrap_or(0);
-            if user_running_jobs[&home] > cpus_per_user
-                && user_running_jobs[&home] > fewest_running_waiting_user
+            if user_running_cores[&home] > cpus_per_user
+                && user_running_cores[&home] > fewest_running_waiting_user
             {
                 // I should consider cancelling and resubmitting a job
                 // in order to be polite.
@@ -951,17 +951,17 @@ pub fn spawn_runner(in_foreground: bool, quietly: bool) -> Result<()> {
                 // fair share of the cluster, and all the cores are
                 // currently busy, in order to ensure low latency for
                 // all users, at the cost of slowing down some jobs.
-                if user_running_jobs[&home] < cpus_per_user {
+                if user_running_cores[&home] < cpus_per_user {
                     // It is possible that we are next in line and should
                     // run using a hyperthread...
                     myself.log(format!(
                         "Thinking about using hyperthreads: {} < {}.",
-                        user_running_jobs[&home], cpus_per_user
+                        user_running_cores[&home], cpus_per_user
                     ));
                     let politely_waiting = status
                         .waiting
                         .iter()
-                        .filter(|j| user_running_jobs[&j.home_dir] < cpus_per_user)
+                        .filter(|j| user_running_cores[&j.home_dir] < cpus_per_user)
                         .count();
                     if politely_waiting > 0 {
                         myself.log(format!(
