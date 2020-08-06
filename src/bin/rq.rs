@@ -13,6 +13,8 @@ const VERSION: &str = git_version::git_version!(
     cargo_prefix = "cargo-"
 );
 
+const GB: f64 = (1u64 << 30) as f64;
+
 fn main() {
     let m = clap::App::new("rq")
         .version(VERSION)
@@ -44,6 +46,16 @@ fn main() {
                         .default_value("1")
                         .hide_default_value(true)
                         .help("the number of cores the job requires [default: 1]"),
+                )
+                .arg(
+                    clap::Arg::with_name("mem")
+                        .short("m")
+                        .long("mem")
+                        .takes_value(true)
+                        .value_name("GIGABYTES")
+                        .default_value("0")
+                        .hide_default_value(true)
+                        .help("the memory required by the job [default: 0]"),
                 )
                 .arg(
                     clap::Arg::with_name("max-output")
@@ -373,6 +385,8 @@ fn main() {
                 std::process::exit(1);
             }
             let ncores = value_t!(m, "cores", usize).unwrap_or_else(|e| e.exit());
+            let memory_required = value_t!(m, "mem", f64).unwrap_or_else(|e| e.exit());
+            let memory_required = (memory_required*GB) as u64;
             let max_output_mb = value_t!(m, "max-output", f64).unwrap_or_else(|e| e.exit());
             let max_output = (max_output_mb * ((1 << 20) as f64)) as u64;
             if let Ok(len) = std::fs::metadata(&output).map(|x| x.len()) {
@@ -390,6 +404,7 @@ fn main() {
                 jn,
                 output,
                 ncores,
+                memory_required,
                 max_output,
                 m.is_present("restart"),
             )

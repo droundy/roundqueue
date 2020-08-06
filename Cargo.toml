@@ -1,6 +1,6 @@
 [package]
 name = "roundqueue"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["droundy <roundyd@physics.oregonstate.edu>"]
 description = "Easy queueing system"
 license = "GPL-2.0"
@@ -22,3 +22,4 @@ libc = "0.2"
 shared_child = "0.3.2"
 dirs = "3.0"
 git-version = "0.3.4"
+procfs = "0.8.0"

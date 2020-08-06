@@ -24,6 +24,8 @@ use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::os::unix::process::CommandExt;
 use std::sync::{Arc, Mutex};
 
+const GB: f64 = (1u64 << 30) as f64;
+
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct RunningJob {
     pub job: Job,
@@ -193,6 +195,16 @@ impl RunningJob {
         }
         false
     }
+    /// Memory used by this job, returning 0 if unavailable.
+    pub fn memory_in_use(&self) -> u64 {
+        if let Ok(p) = procfs::process::Process::new(self.pid as libc::pid_t) {
+            let page_size = procfs::page_size().unwrap() as u64;
+            (p.stat.rss as u64 * page_size) as u64
+        } else {
+            0
+        }
+    }
+
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -206,6 +218,8 @@ pub struct Job {
     #[serde(default)]
     pub cores: usize,
     #[serde(default)]
+    pub memory_required: u64,
+    #[serde(default)]
     pub max_output: Option<u64>,
     #[serde(default)]
     pub restartable: bool,
@@ -213,21 +227,23 @@ pub struct Job {
 
 impl Job {
     pub fn new(
-        cmd: Vec<String>,
+        command: Vec<String>,
         jobname: String,
         output: PathBuf,
         cores: usize,
+        memory_required: u64,
         max_output: u64,
         restartable: bool,
     ) -> Result<Job> {
         Ok(Job {
             directory: std::env::current_dir()?,
             home_dir: dirs::home_dir().unwrap(),
-            command: cmd,
-            jobname: jobname,
-            output: output,
+            command,
+            jobname,
+            output,
             submitted: now(),
-            cores: cores,
+            cores,
+            memory_required,
             max_output: Some(max_output),
             restartable: restartable,
         })
@@ -513,6 +529,15 @@ impl Status {
         // run on this host because their user does not have a daemon
         // running on this host.
         let cpus = num_cpus::get_physical();
+        let available_ram  = if let Ok(m) = procfs::Meminfo::new() {
+            if let Some(ma) = m.mem_available {
+                ma
+            } else {
+                m.mem_total
+            }
+        } else {
+            16*GB as u64
+        };
         let myself = DaemonInfo::new();
         // myself.log(format!("I am in run_next."));
         let waiting: Vec<_> = self
@@ -520,6 +545,7 @@ impl Status {
             .iter()
             .filter(|j| self.homedirs_sharing_host.contains(&j.home_dir))
             .filter(|j| j.cores <= cpus)
+            .filter(|j| j.memory_required <= available_ram)
             .map(|j| j.home_dir.clone())
             .collect();
         if waiting.len() == 0 {
@@ -568,6 +594,15 @@ impl Status {
             .filter(|&j| host == j.node)
             .map(|j| j.job.cores)
             .sum();
+        let mem_reserved: u64 = status
+            .running
+            .iter()
+            .filter(|&j| host == j.node)
+            .map(|j| {
+                let in_use = j.memory_in_use();
+                if j.job.memory_required < in_use { 0 } else { j.job.memory_required - in_use }
+            })
+            .sum();
 
         let cores_available = cpus - cores_in_use;
         if job.cores > cores_available {
@@ -575,6 +610,16 @@ impl Status {
             //     "Not enough cores available: {}/{} cores in use, need {}",
             //     cores_in_use, cpus, job.cores
             // ));
+            return;
+        }
+        let memory_still_available = if available_ram > mem_reserved {
+             available_ram - mem_reserved
+        } else { 0 };
+        if job.memory_required > memory_still_available {
+            myself.log(format!(
+                "Not enough memory available: {:.1}G memory available, with {:.1}G reserved, but I require {:.1}G",
+                available_ram as f64/GB, mem_reserved as f64/GB, job.memory_required as f64/GB,
+            ));
             return;
         }
 
