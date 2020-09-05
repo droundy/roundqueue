@@ -204,7 +204,6 @@ impl RunningJob {
             0
         }
     }
-
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -529,14 +528,14 @@ impl Status {
         // run on this host because their user does not have a daemon
         // running on this host.
         let cpus = num_cpus::get_physical();
-        let available_ram  = if let Ok(m) = procfs::Meminfo::new() {
+        let available_ram = if let Ok(m) = procfs::Meminfo::new() {
             if let Some(ma) = m.mem_available {
                 ma
             } else {
                 m.mem_total
             }
         } else {
-            16*GB as u64
+            16 * GB as u64
         };
         let myself = DaemonInfo::new();
         // myself.log(format!("I am in run_next."));
@@ -600,7 +599,11 @@ impl Status {
             .filter(|&j| host == j.node)
             .map(|j| {
                 let in_use = j.memory_in_use();
-                if j.job.memory_required < in_use { 0 } else { j.job.memory_required - in_use }
+                if j.job.memory_required < in_use {
+                    0
+                } else {
+                    j.job.memory_required - in_use
+                }
             })
             .sum();
 
@@ -613,8 +616,10 @@ impl Status {
             return;
         }
         let memory_still_available = if available_ram > mem_reserved {
-             available_ram - mem_reserved
-        } else { 0 };
+            available_ram - mem_reserved
+        } else {
+            0
+        };
         if job.memory_required > memory_still_available {
             myself.log(format!(
                 "Not enough memory available: {:.1}G memory available, with {:.1}G reserved, but I require {:.1}G",
@@ -841,16 +846,17 @@ pub fn spawn_runner(in_foreground: bool, quietly: bool) -> Result<()> {
             std::thread::sleep(POLLING_TIME);
         }
     });
-    let mut watcher =
-        notify::watcher(notify_tx.clone(), std::time::Duration::from_secs(1)).unwrap();
+    let mut watcher = notify::watcher(notify_tx.clone(), std::time::Duration::from_secs(1)).ok();
     // We watch our own user's WAITING directory, since this is the
     // only place new jobs can show up that we might want to run.
-    watcher
-        .watch(
-            home.join(RQ).join(WAITING),
-            notify::RecursiveMode::NonRecursive,
-        )
-        .ok();
+    if let Some(watcher) = &mut watcher {
+        watcher
+            .watch(
+                home.join(RQ).join(WAITING),
+                notify::RecursiveMode::NonRecursive,
+            )
+            .ok();
+    }
     // We watch all user RUNNING directories, since in the future they
     // may be running a job on this host, and when that job completes
     // we may want to run a job of our own.  Even if they don't
@@ -858,12 +864,14 @@ pub fn spawn_runner(in_foreground: bool, quietly: bool) -> Result<()> {
     // start a daemon in the future, while we are still running!
     for userdir in root_home.read_dir()? {
         if let Ok(userdir) = userdir {
-            watcher
-                .watch(
-                    userdir.path().join(RQ).join(RUNNING),
-                    notify::RecursiveMode::NonRecursive,
-                )
-                .ok();
+            if let Some(watcher) = &mut watcher {
+                watcher
+                    .watch(
+                        userdir.path().join(RQ).join(RUNNING),
+                        notify::RecursiveMode::NonRecursive,
+                    )
+                    .ok();
+            }
         }
     }
     let threads = longthreads::Threads::new();
@@ -876,12 +884,14 @@ pub fn spawn_runner(in_foreground: bool, quietly: bool) -> Result<()> {
         // jobs.  This *should* ensure that we don't end up with
         // daemons that are disconnected from reality and rely on our
         // POLLING_TIME to run jobs.
-        watcher
-            .watch(
-                home.join(RQ).join(WAITING),
-                notify::RecursiveMode::NonRecursive,
-            )
-            .ok();
+        if let Some(watcher) = &mut watcher {
+            watcher
+                .watch(
+                    home.join(RQ).join(WAITING),
+                    notify::RecursiveMode::NonRecursive,
+                )
+                .ok();
+        }
         if let Ok(rr) = home.join(RQ).join(CANCELING).read_dir() {
             for run in rr.flat_map(|r| r.ok()) {
                 if let Ok(j) = RunningJob::read(&run.path()) {
@@ -912,23 +922,28 @@ pub fn spawn_runner(in_foreground: bool, quietly: bool) -> Result<()> {
                 println!("There are no runnable jobs.");
                 return Ok(());
             }
-            watcher
-                .watch(
-                    home.join(RQ).join(CANCELING),
-                    notify::RecursiveMode::NonRecursive,
-                )
-                .ok();
+
+            if let Some(watcher) = &mut watcher {
+                watcher
+                    .watch(
+                        home.join(RQ).join(CANCELING),
+                        notify::RecursiveMode::NonRecursive,
+                    )
+                    .ok();
+            }
             notify_rx.recv().unwrap();
             continue;
         }
         for userdir in root_home.read_dir()? {
             if let Ok(userdir) = userdir {
-                watcher
-                    .watch(
-                        userdir.path().join(RQ).join(RUNNING),
-                        notify::RecursiveMode::NonRecursive,
-                    )
-                    .ok();
+                if let Some(watcher) = &mut watcher {
+                    watcher
+                        .watch(
+                            userdir.path().join(RQ).join(RUNNING),
+                            notify::RecursiveMode::NonRecursive,
+                        )
+                        .ok();
+                }
             }
         }
         // We have a job we would like to run, so let us now find out
