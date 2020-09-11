@@ -403,6 +403,16 @@ impl Status {
                         }
                     }
                 }
+                let cores_used = status.running.iter().map(|j| j.job.cores).sum::<usize>();
+                let cpus = num_cpus::get_physical();
+                if cpus > cores_used {
+                    let cores_available = cpus - cores_used;
+                    for j in status.running.iter_mut() {
+                        if j.job.cores == 0 {
+                            j.job.cores = cores_available;
+                        }
+                    }
+                }
                 if let Ok(rr) = rqdir.join(WAITING).read_dir() {
                     for run in rr.flat_map(|r| r.ok()) {
                         if let Ok(j) = Job::read(&run.path()) {
@@ -608,7 +618,7 @@ impl Status {
             .sum();
 
         let cores_available = cpus - cores_in_use;
-        if job.cores > cores_available {
+        if job.cores > cores_available || cores_available == 0 {
             // myself.log(format!(
             //     "Not enough cores available: {}/{} cores in use, need {}",
             //     cores_in_use, cpus, job.cores

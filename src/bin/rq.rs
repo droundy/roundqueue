@@ -45,7 +45,7 @@ fn main() {
                         .value_name("CPUS")
                         .default_value("1")
                         .hide_default_value(true)
-                        .help("the number of cores the job requires [default: 1]"),
+                        .help("the number of cores the job requires, or 'all' [default: 1]"),
                 )
                 .arg(
                     clap::Arg::with_name("mem")
@@ -384,7 +384,11 @@ fn main() {
                 println!("No such command: {:?}", &command[0]);
                 std::process::exit(1);
             }
-            let ncores = value_t!(m, "cores", usize).unwrap_or_else(|e| e.exit());
+            let ncores = if m.value_of("cores") == Some("all") {
+                0
+            } else {
+                value_t!(m, "cores", usize).unwrap_or_else(|e| e.exit())
+            };
             let memory_required = value_t!(m, "mem", f64).unwrap_or_else(|e| e.exit());
             let memory_required = (memory_required*GB) as u64;
             let max_output_mb = value_t!(m, "max-output", f64).unwrap_or_else(|e| e.exit());
@@ -442,6 +446,7 @@ where
         "STATU USER {:10} {:7} {:7} {} {}",
         "NODE", "RTIME", "WAIT", "CPUS", "JOBNAME"
     );
+    let format_cores = |j: &roundqueue::Job| { if j.cores == 0 { " A".to_string() } else { format!("{:>2}", j.cores)} };
     for j in status.waiting.iter() {
         if j.home_dir == home && j.submitted > most_recent_submission {
             most_recent_submission = j.submitted;
@@ -454,7 +459,7 @@ where
                 "",
                 "",
                 pretty_duration(j.wait_duration()),
-                j.cores,
+                format_cores(&j),
                 &j.jobname
             );
         }
@@ -499,6 +504,7 @@ where
     if most_recent_submission > std::time::Duration::from_secs(60) {
         most_recent_submission -= std::time::Duration::from_secs(60);
     }
+    let format_cores = |j: &roundqueue::RunningJob| { format_cores(&j.job) };
     completed.reverse();
     for j in completed
         .iter()
@@ -511,7 +517,7 @@ where
                 &j.node,
                 pretty_duration(j.duration()),
                 pretty_duration(j.wait_duration()),
-                j.job.cores,
+                format_cores(&j),
                 &j.job.jobname,
             );
         }
@@ -528,7 +534,7 @@ where
                 &j.node,
                 pretty_duration(j.duration()),
                 pretty_duration(j.wait_duration()),
-                j.job.cores,
+                format_cores(&j),
                 &j.job.jobname,
             );
         }
@@ -545,7 +551,7 @@ where
                 &j.node,
                 pretty_duration(j.duration()),
                 pretty_duration(j.wait_duration()),
-                j.job.cores,
+                format_cores(&j),
                 &j.job.jobname,
             );
         }
@@ -562,7 +568,7 @@ where
                 &j.node,
                 pretty_duration(j.duration()),
                 pretty_duration(j.wait_duration()),
-                j.job.cores,
+                format_cores(&j),
                 &j.job.jobname,
             );
         }
@@ -579,7 +585,7 @@ where
                 &j.node,
                 pretty_duration(j.duration()),
                 pretty_duration(j.wait_duration()),
-                j.job.cores,
+                format_cores(&j),
                 &j.job.jobname,
             );
         }
@@ -594,7 +600,7 @@ where
                     &j.node,
                     pretty_duration(j.duration()),
                     pretty_duration(j.wait_duration()),
-                    j.job.cores,
+                    format_cores(&j),
                     &j.job.jobname
                 );
             } else {
@@ -604,7 +610,7 @@ where
                     &j.node,
                     pretty_duration(j.duration()),
                     pretty_duration(j.wait_duration()),
-                    j.job.cores,
+                    format_cores(&j),
                     &j.job.jobname
                 );
             }
