@@ -581,7 +581,12 @@ impl Status {
         // myself.log(format!("The running counts are: {:?}", run_counts));
         let mut job = self.waiting[0].clone();
         let mut earliest_submitted = std::time::Duration::from_secs(0xffffffffffffff);
-        for j in self.waiting.into_iter().filter(|j| j.cores <= cpus) {
+        for j in self
+            .waiting
+            .into_iter()
+            .filter(|j| j.cores <= cpus)
+            .filter(|j| j.memory_required <= available_ram)
+        {
             if run_counts.get(&j.home_dir) == Some(&least_running)
                 && j.submitted < earliest_submitted
             {
