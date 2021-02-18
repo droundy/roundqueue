@@ -964,6 +964,9 @@ pub fn spawn_runner(in_foreground: bool, quietly: bool) -> Result<()> {
         // We have a job we would like to run, so let us now find out
         // if it is runnable!
         let status = Status::new().unwrap();
+        for j in status.running.iter().filter(|j| &j.node == &host) {
+            myself.log(format!("  Job {} has {} cores", j.job.jobname, j.job.cores));
+        }
         let running = status
             .running
             .iter()
