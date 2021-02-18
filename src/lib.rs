@@ -408,6 +408,7 @@ impl Status {
                 if cpus > cores_used {
                     for j in status.running.iter_mut() {
                         if j.job.cores == 0 {
+                            println!("...... setting {} from 0 to {} cores", j.job.jobname, j.job.cores);
                             j.job.cores = cpus;
                         }
                     }
