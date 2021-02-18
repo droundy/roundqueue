@@ -721,6 +721,10 @@ impl Status {
             completed: std::time::Duration::from_secs(0),
             exit_code: None,
         };
+        if runningjob.job.cores == 0 {
+            // Just set the number of cores used to all of them.
+            runningjob.job.cores = num_cpus::get_physical();
+        }
         if let Err(e) = runningjob.save(Path::new(RUNNING)) {
             myself.log(format!("Yikes, unable to save job? {}", e));
             return;
