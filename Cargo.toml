@@ -1,6 +1,6 @@
 [package]
 name = "roundqueue"
-version = "0.2.7"
+version = "0.2.8"
 authors = ["David Roundy <roundyd@physics.oregonstate.edu>"]
 description = "Easy queueing system"
 license = "GPL-2.0"
