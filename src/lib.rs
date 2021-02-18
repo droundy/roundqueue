@@ -406,10 +406,9 @@ impl Status {
                 let cores_used = status.running.iter().map(|j| j.job.cores).sum::<usize>();
                 let cpus = num_cpus::get_physical();
                 if cpus > cores_used {
-                    let cores_available = cpus - cores_used;
                     for j in status.running.iter_mut() {
                         if j.job.cores == 0 {
-                            j.job.cores = cores_available;
+                            j.job.cores = cpus;
                         }
                     }
                 }
