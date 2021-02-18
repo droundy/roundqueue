@@ -403,15 +403,8 @@ impl Status {
                         }
                     }
                 }
-                let cores_used = status.running.iter().map(|j| j.job.cores).sum::<usize>();
-                let cpus = num_cpus::get_physical();
-                if cpus > cores_used {
-                    for j in status.running.iter_mut() {
-                        if j.job.cores == 0 {
-                            println!("...... setting {} from 0 to {} cores", j.job.jobname, j.job.cores);
-                            j.job.cores = cpus;
-                        }
-                    }
+                for j in status.running.iter_mut().filter(|j| j.job.cores == 0) {
+                    j.job.cores = num_cpus::get_physical();
                 }
                 if let Ok(rr) = rqdir.join(WAITING).read_dir() {
                     for run in rr.flat_map(|r| r.ok()) {
