@@ -630,7 +630,8 @@ fn do_nodes() -> Result<()> {
             .running
             .iter()
             .filter(|j| j.node == h.hostname)
-            .count();
+            .map(|j| j.job.cores)
+            .sum::<usize>();
         total_running += running;
         total_physical += h.physical_cores;
         total_logical += h.logical_cpus;
@@ -674,7 +675,8 @@ fn do_users() -> Result<()> {
             .running
             .iter()
             .filter(|j| homedir_to_username(&j.job.home_dir) == u)
-            .count();
+            .map(|j| j.job.cores)
+            .sum::<usize>();
         let waiting = status
             .waiting
             .iter()
