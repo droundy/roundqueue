@@ -525,6 +525,7 @@ impl Status {
         home_dir: &Path,
         threads: &longthreads::Threads,
         in_foreground: bool,
+        use_hyperthreads: bool,
     ) {
         // "waiting" is the set of jobs that are waiting to run *on
         // this host*.  Thus this ignores any waiting jobs that cannot
@@ -615,8 +616,7 @@ impl Status {
             })
             .sum();
 
-        let cores_available = cpus - cores_in_use;
-        if job.cores > cores_available || cores_available == 0 {
+        if !use_hyperthreads && (job.cores + cores_in_use > cpus || cpus == cores_in_use) {
             // myself.log(format!(
             //     "Not enough cores available: {}/{} cores in use, need {}",
             //     cores_in_use, cpus, job.cores
@@ -987,7 +987,7 @@ pub fn spawn_runner(in_foreground: bool, quietly: bool) -> Result<()> {
             .map(|j| j.job.cores)
             .sum();
         if cpus > running && status.waiting.len() > 0 {
-            status.run_next(&host, &home, &threads, in_foreground);
+            status.run_next(&host, &home, &threads, in_foreground, false);
         } else if status.waiting.len() > 0 && total_running >= total_cpus {
             let mut user_running_cores = HashMap::new();
             // the following ignores any jobs running on nodes
@@ -1062,7 +1062,7 @@ pub fn spawn_runner(in_foreground: bool, quietly: bool) -> Result<()> {
                             "    Starting a job since we have some {} waiting.",
                             politely_waiting
                         ));
-                        status.run_next(&host, &home, &threads, in_foreground);
+                        status.run_next(&host, &home, &threads, in_foreground, true);
                     } else {
                         myself.log(format!("    I have no jobs waiting to run."));
                     }
